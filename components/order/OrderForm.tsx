@@ -249,7 +249,7 @@ export function OrderForm({ onOrderCreated }: OrderFormProps) {
               )}
             </Button>
 
-            <p className="text-center text-sm text-stone-500">
+            <p className="text-center text-base font-semibold text-amber-700">
               Ask Mackanzie for other spirits with mixers or not.
             </p>
           </form>
