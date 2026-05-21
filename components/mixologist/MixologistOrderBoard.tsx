@@ -204,7 +204,6 @@ export function MixologistOrderBoard() {
         <SectionHeader
           eyebrow="Mixologist"
           title="Orders panel"
-          description="Keep live drink prep separate from finished history while the panel keeps polling in the background."
           meta={
             <p className="text-xs font-medium uppercase tracking-[0.2em] text-stone-400">
               {pendingAction ? (

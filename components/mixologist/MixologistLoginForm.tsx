@@ -26,10 +26,6 @@ export function MixologistLoginForm() {
           Staff Sign In
         </CardDescription>
         <CardTitle className="text-4xl text-stone-950">Mixologist Login</CardTitle>
-        <CardDescription className="pt-2 text-sm leading-7 text-stone-600">
-          Use the mixologist username and password from your environment setup to access
-          the live order board.
-        </CardDescription>
       </CardHeader>
       <CardContent className="px-8 pb-8">
         <form action={formAction} className="grid gap-5">
