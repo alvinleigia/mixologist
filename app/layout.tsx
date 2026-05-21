@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { Toaster } from "@/components/ui/sonner";
 
 export const metadata: Metadata = {
-  title: "Bar Order MVP",
+  title: "Mixologist - AGO",
   description: "Mocktail and cocktail ordering workflow for customers and mixologists.",
 };
 
