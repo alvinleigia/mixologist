@@ -1,17 +1,19 @@
 import { NextResponse } from "next/server";
 
-import { requireMixologistSession } from "@/lib/auth";
+import { requireStaffSession } from "@/lib/auth";
 import { getAdminMenu } from "@/lib/menu";
+import { getCurrentTenantContext } from "@/lib/tenant-context";
 
 export async function GET() {
   try {
-    const session = await requireMixologistSession();
+    const session = await requireStaffSession();
 
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const categories = await getAdminMenu();
+    const tenantContext = await getCurrentTenantContext();
+    const categories = await getAdminMenu(tenantContext);
     return NextResponse.json({ categories });
   } catch (error) {
     return NextResponse.json(

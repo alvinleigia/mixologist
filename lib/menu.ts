@@ -3,6 +3,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { drinkCategories } from "@/data/drinks";
 import { getDb } from "@/db";
 import { menuCategories, menuItems } from "@/db/schema";
+import { getDefaultTenantContext, TenantContext } from "@/lib/tenant-context";
 import { MenuCategoryRecord } from "@/types/menu";
 
 const defaultMenuSeed = drinkCategories.map((category, categoryIndex) => ({
@@ -57,11 +58,17 @@ async function ensureUniqueSlug(
   }
 }
 
-export async function ensureMenuSeeded() {
+export async function ensureMenuSeeded(context: TenantContext = getDefaultTenantContext()) {
   const db = getDb();
   const [existingCategory] = await db
     .select({ id: menuCategories.id })
     .from(menuCategories)
+    .where(
+      and(
+        eq(menuCategories.organizationId, context.organizationId),
+        eq(menuCategories.locationId, context.locationId),
+      ),
+    )
     .limit(1);
 
   if (existingCategory) {
@@ -72,6 +79,8 @@ export async function ensureMenuSeeded() {
     const [createdCategory] = await db
       .insert(menuCategories)
       .values({
+        organizationId: context.organizationId,
+        locationId: context.locationId,
         slug: category.slug,
         name: category.name,
         description: category.description,
@@ -87,6 +96,8 @@ export async function ensureMenuSeeded() {
     if (category.items.length > 0) {
       await db.insert(menuItems).values(
         category.items.map((item) => ({
+          organizationId: context.organizationId,
+          locationId: context.locationId,
           categoryId: createdCategory.id,
           slug: item.slug,
           name: item.name,
@@ -115,6 +126,8 @@ function groupMenuData(
 
     categoryMap.set(category.id, {
       id: category.id,
+      organizationId: category.organizationId,
+      locationId: category.locationId,
       slug: category.slug,
       name: category.name,
       description: category.description,
@@ -137,6 +150,8 @@ function groupMenuData(
 
     category.items.push({
       id: item.id,
+      organizationId: item.organizationId,
+      locationId: item.locationId,
       categoryId: item.categoryId,
       slug: item.slug,
       name: item.name,
@@ -169,44 +184,79 @@ function groupMenuData(
     });
 }
 
-export async function getPublicMenu() {
-  await ensureMenuSeeded();
+export async function getPublicMenu(context: TenantContext = getDefaultTenantContext()) {
+  await ensureMenuSeeded(context);
   const db = getDb();
   const categories = await db
     .select()
     .from(menuCategories)
+    .where(
+      and(
+        eq(menuCategories.organizationId, context.organizationId),
+        eq(menuCategories.locationId, context.locationId),
+      ),
+    )
     .orderBy(asc(menuCategories.sortOrder), asc(menuCategories.name));
   const items = await db
     .select()
     .from(menuItems)
+    .where(
+      and(
+        eq(menuItems.organizationId, context.organizationId),
+        eq(menuItems.locationId, context.locationId),
+      ),
+    )
     .orderBy(asc(menuItems.sortOrder), asc(menuItems.name));
 
   return groupMenuData(categories, items, false);
 }
 
-export async function getAdminMenu() {
-  await ensureMenuSeeded();
+export async function getAdminMenu(context: TenantContext = getDefaultTenantContext()) {
+  await ensureMenuSeeded(context);
   const db = getDb();
   const categories = await db
     .select()
     .from(menuCategories)
+    .where(
+      and(
+        eq(menuCategories.organizationId, context.organizationId),
+        eq(menuCategories.locationId, context.locationId),
+      ),
+    )
     .orderBy(asc(menuCategories.sortOrder), asc(menuCategories.name));
   const items = await db
     .select()
     .from(menuItems)
+    .where(
+      and(
+        eq(menuItems.organizationId, context.organizationId),
+        eq(menuItems.locationId, context.locationId),
+      ),
+    )
     .orderBy(asc(menuItems.sortOrder), asc(menuItems.name));
 
   return groupMenuData(categories, items, true);
 }
 
-export async function getMenuSelectionSnapshot(categoryId: string, itemId: string) {
-  await ensureMenuSeeded();
+export async function getMenuSelectionSnapshot(
+  categoryId: string,
+  itemId: string,
+  context: TenantContext = getDefaultTenantContext(),
+) {
+  await ensureMenuSeeded(context);
   const db = getDb();
 
   const [category] = await db
     .select()
     .from(menuCategories)
-    .where(and(eq(menuCategories.id, categoryId), eq(menuCategories.isActive, true)))
+    .where(
+      and(
+        eq(menuCategories.id, categoryId),
+        eq(menuCategories.organizationId, context.organizationId),
+        eq(menuCategories.locationId, context.locationId),
+        eq(menuCategories.isActive, true),
+      ),
+    )
     .limit(1);
 
   if (!category) {
@@ -219,6 +269,8 @@ export async function getMenuSelectionSnapshot(categoryId: string, itemId: strin
     .where(
       and(
         eq(menuItems.id, itemId),
+        eq(menuItems.organizationId, context.organizationId),
+        eq(menuItems.locationId, context.locationId),
         eq(menuItems.categoryId, category.id),
         eq(menuItems.isActive, true),
       ),
@@ -233,14 +285,16 @@ export async function createMenuCategory(input: {
   description?: string | null;
   sortOrder: number;
   isActive: boolean;
-}) {
-  await ensureMenuSeeded();
+}, context: TenantContext = getDefaultTenantContext()) {
+  await ensureMenuSeeded(context);
   const db = getDb();
   const slug = await ensureUniqueSlug(menuCategories, input.name);
 
   const [createdCategory] = await db
     .insert(menuCategories)
     .values({
+      organizationId: context.organizationId,
+      locationId: context.locationId,
       slug,
       name: input.name,
       description: input.description ?? null,
@@ -261,8 +315,9 @@ export async function updateMenuCategory(
     sortOrder: number;
     isActive: boolean;
   },
+  context: TenantContext = getDefaultTenantContext(),
 ) {
-  await ensureMenuSeeded();
+  await ensureMenuSeeded(context);
   const db = getDb();
   const slug = await ensureUniqueSlug(menuCategories, input.name, categoryId);
 
@@ -276,7 +331,13 @@ export async function updateMenuCategory(
       isActive: input.isActive,
       updatedAt: new Date(),
     })
-    .where(eq(menuCategories.id, categoryId))
+    .where(
+      and(
+        eq(menuCategories.id, categoryId),
+        eq(menuCategories.organizationId, context.organizationId),
+        eq(menuCategories.locationId, context.locationId),
+      ),
+    )
     .returning();
 
   return updatedCategory ?? null;
@@ -290,13 +351,19 @@ export async function createMenuItem(input: {
   imageUrl?: string | null;
   sortOrder: number;
   isActive: boolean;
-}) {
-  await ensureMenuSeeded();
+}, context: TenantContext = getDefaultTenantContext()) {
+  await ensureMenuSeeded(context);
   const db = getDb();
   const [category] = await db
     .select({ id: menuCategories.id })
     .from(menuCategories)
-    .where(eq(menuCategories.id, input.categoryId))
+    .where(
+      and(
+        eq(menuCategories.id, input.categoryId),
+        eq(menuCategories.organizationId, context.organizationId),
+        eq(menuCategories.locationId, context.locationId),
+      ),
+    )
     .limit(1);
 
   if (!category) {
@@ -308,6 +375,8 @@ export async function createMenuItem(input: {
   const [createdItem] = await db
     .insert(menuItems)
     .values({
+      organizationId: context.organizationId,
+      locationId: context.locationId,
       categoryId: input.categoryId,
       slug,
       name: input.name,
@@ -334,13 +403,20 @@ export async function updateMenuItem(
     sortOrder: number;
     isActive: boolean;
   },
+  context: TenantContext = getDefaultTenantContext(),
 ) {
-  await ensureMenuSeeded();
+  await ensureMenuSeeded(context);
   const db = getDb();
   const [category] = await db
     .select({ id: menuCategories.id })
     .from(menuCategories)
-    .where(eq(menuCategories.id, input.categoryId))
+    .where(
+      and(
+        eq(menuCategories.id, input.categoryId),
+        eq(menuCategories.organizationId, context.organizationId),
+        eq(menuCategories.locationId, context.locationId),
+      ),
+    )
     .limit(1);
 
   if (!category) {
@@ -352,6 +428,8 @@ export async function updateMenuItem(
   const [updatedItem] = await db
     .update(menuItems)
     .set({
+      organizationId: context.organizationId,
+      locationId: context.locationId,
       categoryId: input.categoryId,
       slug,
       name: input.name,
@@ -362,7 +440,13 @@ export async function updateMenuItem(
       isActive: input.isActive,
       updatedAt: new Date(),
     })
-    .where(eq(menuItems.id, itemId))
+    .where(
+      and(
+        eq(menuItems.id, itemId),
+        eq(menuItems.organizationId, context.organizationId),
+        eq(menuItems.locationId, context.locationId),
+      ),
+    )
     .returning();
 
   return updatedItem ?? null;
@@ -468,8 +552,8 @@ function normalizeText(value: string | undefined) {
   return trimmed ? trimmed : null;
 }
 
-export async function exportMenuCsv() {
-  const categories = await getAdminMenu();
+export async function exportMenuCsv(context: TenantContext = getDefaultTenantContext()) {
+  const categories = await getAdminMenu(context);
 
   const headers = [
     "category_slug",
@@ -547,8 +631,11 @@ export async function exportMenuCsv() {
   return [headers.join(","), ...body].join("\n");
 }
 
-export async function importMenuCsv(csvText: string) {
-  await ensureMenuSeeded();
+export async function importMenuCsv(
+  csvText: string,
+  context: TenantContext = getDefaultTenantContext(),
+) {
+  await ensureMenuSeeded(context);
   const db = getDb();
   const lines = csvText
     .split(/\r?\n/)
@@ -581,8 +668,24 @@ export async function importMenuCsv(csvText: string) {
   const itemSortOrderIndex = headers.indexOf("item_sort_order");
   const itemActiveIndex = headers.indexOf("item_active");
 
-  const existingCategories = await db.select().from(menuCategories);
-  const existingItems = await db.select().from(menuItems);
+  const existingCategories = await db
+    .select()
+    .from(menuCategories)
+    .where(
+      and(
+        eq(menuCategories.organizationId, context.organizationId),
+        eq(menuCategories.locationId, context.locationId),
+      ),
+    );
+  const existingItems = await db
+    .select()
+    .from(menuItems)
+    .where(
+      and(
+        eq(menuItems.organizationId, context.organizationId),
+        eq(menuItems.locationId, context.locationId),
+      ),
+    );
 
   const categoriesBySlug = new Map(existingCategories.map((category) => [category.slug, category]));
   const categoriesByName = new Map(existingCategories.map((category) => [category.name.toLowerCase(), category]));
@@ -618,17 +721,21 @@ export async function importMenuCsv(csvText: string) {
         description: categoryDescription,
         sortOrder: categorySortOrder,
         isActive: categoryActive,
-      });
+      }, context);
       categoriesBySlug.set(category.slug, category);
       categoriesByName.set(category.name.toLowerCase(), category);
       createdCategories += 1;
     } else {
-      const updatedCategory = await updateMenuCategory(category.id, {
-        name: categoryName,
-        description: categoryDescription,
-        sortOrder: categorySortOrder,
-        isActive: categoryActive,
-      });
+      const updatedCategory = await updateMenuCategory(
+        category.id,
+        {
+          name: categoryName,
+          description: categoryDescription,
+          sortOrder: categorySortOrder,
+          isActive: categoryActive,
+        },
+        context,
+      );
 
       if (updatedCategory) {
         category = updatedCategory;
@@ -666,19 +773,23 @@ export async function importMenuCsv(csvText: string) {
         imageUrl: itemImageUrl,
         sortOrder: itemSortOrder,
         isActive: itemActive,
-      });
+      }, context);
       existingItems.push(createdItem);
       createdItems += 1;
     } else {
-      const updatedItem = await updateMenuItem(existingItem.id, {
-        categoryId: category.id,
-        name: itemName,
-        description: itemDescription,
-        price: itemPrice,
-        imageUrl: itemImageUrl,
-        sortOrder: itemSortOrder,
-        isActive: itemActive,
-      });
+      const updatedItem = await updateMenuItem(
+        existingItem.id,
+        {
+          categoryId: category.id,
+          name: itemName,
+          description: itemDescription,
+          price: itemPrice,
+          imageUrl: itemImageUrl,
+          sortOrder: itemSortOrder,
+          isActive: itemActive,
+        },
+        context,
+      );
 
       if (updatedItem) {
         const existingItemIndex = existingItems.findIndex((item) => item.id === updatedItem.id);
@@ -693,7 +804,7 @@ export async function importMenuCsv(csvText: string) {
   }
 
   return {
-    categories: await getAdminMenu(),
+    categories: await getAdminMenu(context),
     summary: {
       createdCategories,
       updatedCategories,

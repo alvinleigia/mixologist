@@ -1,23 +1,25 @@
 import { NextResponse } from "next/server";
 
-import { requireMixologistSession } from "@/lib/auth";
+import { requireStaffSession } from "@/lib/auth";
 import { exportMenuCsv } from "@/lib/menu";
+import { getCurrentTenantContext } from "@/lib/tenant-context";
 
 export async function GET() {
   try {
-    const session = await requireMixologistSession();
+    const session = await requireStaffSession();
 
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const csv = await exportMenuCsv();
+    const tenantContext = await getCurrentTenantContext();
+    const csv = await exportMenuCsv(tenantContext);
 
     return new NextResponse(csv, {
       status: 200,
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
-        "Content-Disposition": 'attachment; filename="mixologist-menu-export.csv"',
+        "Content-Disposition": 'attachment; filename="staff-menu-export.csv"',
       },
     });
   } catch (error) {

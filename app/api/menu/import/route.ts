@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { requireMixologistSession } from "@/lib/auth";
+import { requireStaffSession } from "@/lib/auth";
 import { importMenuCsv } from "@/lib/menu";
+import { getCurrentTenantContext } from "@/lib/tenant-context";
 import { z } from "zod";
 
 const importMenuSchema = z.object({
@@ -10,7 +11,7 @@ const importMenuSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await requireMixologistSession();
+    const session = await requireStaffSession();
 
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -23,7 +24,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     }
 
-    const result = await importMenuCsv(parsed.data.csv);
+    const tenantContext = await getCurrentTenantContext();
+    const result = await importMenuCsv(parsed.data.csv, tenantContext);
 
     return NextResponse.json(result);
   } catch (error) {

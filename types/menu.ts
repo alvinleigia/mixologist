@@ -1,5 +1,7 @@
 export type MenuItemRecord = {
   id: string;
+  organizationId: string;
+  locationId: string | null;
   categoryId: string;
   slug: string;
   name: string;
@@ -12,6 +14,8 @@ export type MenuItemRecord = {
 
 export type MenuCategoryRecord = {
   id: string;
+  organizationId: string;
+  locationId: string | null;
   slug: string;
   name: string;
   description: string | null;

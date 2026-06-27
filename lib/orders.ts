@@ -1,8 +1,9 @@
-import { desc, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 
 import { getDb } from "@/db";
-import { orders } from "@/db/schema";
-import { OrderStatus } from "@/lib/constants";
+import { orderItems, orders } from "@/db/schema";
+import { OrderLineItem, OrderStatus } from "@/lib/constants";
+import { getDefaultTenantContext, TenantContext } from "@/lib/tenant-context";
 
 export function isActiveOrderStatus(status: OrderStatus) {
   return status === "PENDING" || status === "PREPARING" || status === "READY";
@@ -12,13 +13,67 @@ export function isPastOrderStatus(status: OrderStatus) {
   return status === "DELIVERED" || status === "CANCELLED";
 }
 
-export function serializeOrder(order: typeof orders.$inferSelect) {
+function groupItemsByOrder(items: typeof orderItems.$inferSelect[]) {
+  const map = new Map<string, OrderLineItem[]>();
+
+  for (const item of items) {
+    const list = map.get(item.orderId) ?? [];
+    list.push({
+      id: item.id,
+      organizationId: item.organizationId,
+      locationId: item.locationId,
+      categoryId: item.categoryId,
+      categoryName: item.categoryName,
+      drinkId: item.drinkId,
+      drinkName: item.drinkName,
+      quantity: item.quantity,
+      notes: item.notes ?? null,
+      unitPrice: item.unitPrice ?? null,
+      status: item.status,
+      startedAt: item.startedAt?.toISOString() ?? null,
+      readyAt: item.readyAt?.toISOString() ?? null,
+      deliveredAt: item.deliveredAt?.toISOString() ?? null,
+      cancelledAt: item.cancelledAt?.toISOString() ?? null,
+    });
+    map.set(item.orderId, list);
+  }
+
+  return map;
+}
+
+export function buildOrderSummary(items: Array<{ drinkName: string; quantity: number }>) {
+  if (items.length === 0) {
+    return "Order";
+  }
+
+  const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
+  const first = items[0];
+
+  if (items.length === 1 && first.quantity === 1) {
+    return first.drinkName;
+  }
+
+  if (items.length === 1) {
+    return `${first.drinkName} x${first.quantity}`;
+  }
+
+  return `${first.drinkName} + ${totalQuantity - first.quantity} more`;
+}
+
+export function serializeOrder(
+  order: typeof orders.$inferSelect,
+  items: OrderLineItem[] = [],
+) {
   return {
     orderId: order.id,
     orderNo: order.orderNo,
+    organizationId: order.organizationId,
+    locationId: order.locationId,
     customerName: order.customerName,
     categoryName: order.categoryName,
     drinkName: order.drinkName,
+    itemCount: items.reduce((sum, item) => sum + item.quantity, 0),
+    items,
     status: order.status,
     customerToken: order.customerToken,
     createdAt: order.createdAt.toISOString(),
@@ -30,9 +85,18 @@ export function serializeOrder(order: typeof orders.$inferSelect) {
   };
 }
 
-export async function getActiveOrders() {
+export async function getActiveOrders(context: TenantContext = getDefaultTenantContext()) {
   const db = getDb();
-  const activeOrders = await db.select().from(orders).orderBy(desc(orders.createdAt));
+  const activeOrders = await db
+    .select()
+    .from(orders)
+    .where(
+      and(
+        eq(orders.organizationId, context.organizationId),
+        eq(orders.locationId, context.locationId),
+      ),
+    )
+    .orderBy(desc(orders.createdAt));
 
   const statusRank: Record<OrderStatus, number> = {
     PENDING: 1,
@@ -55,9 +119,18 @@ export async function getActiveOrders() {
     });
 }
 
-export async function getMixologistOrders() {
+export async function getStaffOrders(context: TenantContext = getDefaultTenantContext()) {
   const db = getDb();
-  const allOrders = await db.select().from(orders).orderBy(desc(orders.createdAt));
+  const allOrders = await db
+    .select()
+    .from(orders)
+    .where(
+      and(
+        eq(orders.organizationId, context.organizationId),
+        eq(orders.locationId, context.locationId),
+      ),
+    )
+    .orderBy(desc(orders.createdAt));
 
   const statusRank: Record<OrderStatus, number> = {
     PENDING: 1,
@@ -93,7 +166,11 @@ export async function getMixologistOrders() {
   return { activeOrders, pastOrders };
 }
 
-export async function getCustomerOrders(input: Array<{ orderId: string; customerToken: string }>) {
+
+export async function getCustomerOrders(
+  input: Array<{ orderId: string; customerToken: string }>,
+  context: TenantContext = getDefaultTenantContext(),
+) {
   if (input.length === 0) {
     return [];
   }
@@ -103,9 +180,57 @@ export async function getCustomerOrders(input: Array<{ orderId: string; customer
   const foundOrders = await db
     .select()
     .from(orders)
-    .where(inArray(orders.id, input.map((item) => item.orderId)));
+    .where(
+      and(
+        inArray(orders.id, input.map((item) => item.orderId)),
+        eq(orders.organizationId, context.organizationId),
+        eq(orders.locationId, context.locationId),
+      ),
+    );
 
   const allowedMap = new Map(input.map((item) => [item.orderId, item.customerToken]));
 
   return foundOrders.filter((order) => allowedMap.get(order.id) === order.customerToken);
+}
+
+export async function getOrderItemsForOrders(
+  orderIds: string[],
+  context: TenantContext = getDefaultTenantContext(),
+) {
+  if (orderIds.length === 0) {
+    return new Map<string, OrderLineItem[]>();
+  }
+
+  const db = getDb();
+  const items = await db
+    .select()
+    .from(orderItems)
+    .where(
+      and(
+        inArray(orderItems.orderId, orderIds),
+        eq(orderItems.organizationId, context.organizationId),
+        eq(orderItems.locationId, context.locationId),
+      ),
+    );
+
+  return groupItemsByOrder(items);
+}
+
+export async function getOrderItems(
+  orderId: string,
+  context: TenantContext = getDefaultTenantContext(),
+) {
+  const db = getDb();
+  const items = await db
+    .select()
+    .from(orderItems)
+    .where(
+      and(
+        eq(orderItems.orderId, orderId),
+        eq(orderItems.organizationId, context.organizationId),
+        eq(orderItems.locationId, context.locationId),
+      ),
+    );
+
+  return groupItemsByOrder(items).get(orderId) ?? [];
 }

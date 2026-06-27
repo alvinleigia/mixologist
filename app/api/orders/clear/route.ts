@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getDb } from "@/db";
+import { and, eq } from "drizzle-orm";
+
 import { orders } from "@/db/schema";
-import { requireMixologistSession } from "@/lib/auth";
+import { requireStaffSession } from "@/lib/auth";
 import { markOrdersReset } from "@/lib/order-reset";
+import { getCurrentTenantContext } from "@/lib/tenant-context";
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await requireMixologistSession();
+    const session = await requireStaffSession();
 
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -24,7 +27,16 @@ export async function POST(request: NextRequest) {
     }
 
     const db = getDb();
-    const deletedOrders = await db.delete(orders).returning({ id: orders.id });
+    const tenantContext = await getCurrentTenantContext();
+    const deletedOrders = await db
+      .delete(orders)
+      .where(
+        and(
+          eq(orders.organizationId, tenantContext.organizationId),
+          eq(orders.locationId, tenantContext.locationId),
+        ),
+      )
+      .returning({ id: orders.id });
     const ordersResetAt = await markOrdersReset();
 
     return NextResponse.json({

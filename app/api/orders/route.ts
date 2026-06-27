@@ -2,25 +2,37 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateCustomerToken } from "@/lib/order-token";
 import { getNextOrderNumber } from "@/lib/order-number";
 import { createOrderSchema } from "@/lib/validations/order";
-import { getMixologistOrders, serializeOrder } from "@/lib/orders";
+import {
+  buildOrderSummary,
+  getStaffOrders,
+  getOrderItemsForOrders,
+  serializeOrder,
+} from "@/lib/orders";
 import { getOrdersResetAt } from "@/lib/order-reset";
 import { getMenuSelectionSnapshot } from "@/lib/menu";
 import { getDb } from "@/db";
-import { orders } from "@/db/schema";
-import { requireMixologistSession } from "@/lib/auth";
+import { orderItems, orders } from "@/db/schema";
+import { requireStaffSession } from "@/lib/auth";
+import { getCurrentTenantContext } from "@/lib/tenant-context";
 
 export async function GET() {
   try {
-    const session = await requireMixologistSession();
+    const session = await requireStaffSession();
 
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { activeOrders, pastOrders } = await getMixologistOrders();
+    const tenantContext = await getCurrentTenantContext();
+    const { activeOrders, pastOrders } = await getStaffOrders(tenantContext);
+    const itemMap = await getOrderItemsForOrders(
+      [...activeOrders, ...pastOrders].map((order) => order.id),
+      tenantContext,
+    );
+
     return NextResponse.json({
-      activeOrders: activeOrders.map(serializeOrder),
-      pastOrders: pastOrders.map(serializeOrder),
+      activeOrders: activeOrders.map((order) => serializeOrder(order, itemMap.get(order.id) ?? [])),
+      pastOrders: pastOrders.map((order) => serializeOrder(order, itemMap.get(order.id) ?? [])),
     });
   } catch (error) {
     return NextResponse.json(
@@ -34,40 +46,104 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const parsed = createOrderSchema.safeParse(body);
+    const tenantContext = await getCurrentTenantContext();
 
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     }
 
-    const { category, item } = await getMenuSelectionSnapshot(
-      parsed.data.categoryId,
-      parsed.data.drinkId,
-    );
+    const cartItems: Array<{
+      categoryId: string;
+      organizationId: string;
+      locationId: string;
+      categoryName: string;
+      drinkId: string;
+      drinkName: string;
+      quantity: number;
+      notes: string | null;
+      unitPrice: string | null;
+      status: "PENDING";
+      startedAt: null;
+      readyAt: null;
+      deliveredAt: null;
+      cancelledAt: null;
+    }> = [];
 
-    if (!category || !item) {
-      return NextResponse.json({ error: "Invalid drink selection." }, { status: 400 });
+    for (const requestedItem of parsed.data.items) {
+      const { category, item } = await getMenuSelectionSnapshot(
+        requestedItem.categoryId,
+        requestedItem.drinkId,
+        tenantContext,
+      );
+
+      if (!category || !item) {
+        return NextResponse.json({ error: "Invalid drink selection." }, { status: 400 });
+      }
+
+      cartItems.push({
+        categoryId: category.id,
+        organizationId: tenantContext.organizationId,
+        locationId: tenantContext.locationId,
+        categoryName: category.name,
+        drinkId: item.id,
+        drinkName: item.name,
+        quantity: requestedItem.quantity,
+        notes: requestedItem.notes?.trim() || null,
+        unitPrice: item.price ?? null,
+        status: "PENDING",
+        startedAt: null,
+        readyAt: null,
+        deliveredAt: null,
+        cancelledAt: null,
+      });
     }
 
     const db = getDb();
     const customerToken = generateCustomerToken();
     const orderNo = await getNextOrderNumber();
+    const summaryCategoryName =
+      cartItems.length === 1 ? cartItems[0].categoryName : `${cartItems.length} categories`;
+    const summaryDrinkName = buildOrderSummary(
+      cartItems.map((item) => ({ drinkName: item.drinkName, quantity: item.quantity })),
+    );
 
-    const [createdOrder] = await db
-      .insert(orders)
-      .values({
-        orderNo,
-        customerName: parsed.data.customerName.trim(),
-        customerToken,
-        categoryId: category.id,
-        categoryName: category.name,
-        drinkId: item.id,
-        drinkName: item.name,
-      })
-      .returning()
-      ;
+    const createdOrder = await db.transaction(async (tx) => {
+      const [newOrder] = await tx
+        .insert(orders)
+        .values({
+          organizationId: tenantContext.organizationId,
+          locationId: tenantContext.locationId,
+          orderNo,
+          customerName: parsed.data.customerName.trim(),
+          customerToken,
+          categoryId: cartItems[0].categoryId,
+          categoryName: summaryCategoryName,
+          drinkId: cartItems[0].drinkId,
+          drinkName: summaryDrinkName,
+        })
+        .returning();
+
+      await tx.insert(orderItems).values(
+        cartItems.map((item) => ({
+          organizationId: tenantContext.organizationId,
+          locationId: tenantContext.locationId,
+          orderId: newOrder.id,
+          categoryId: item.categoryId,
+          categoryName: item.categoryName,
+          drinkId: item.drinkId,
+          drinkName: item.drinkName,
+          quantity: item.quantity,
+          notes: item.notes,
+          unitPrice: item.unitPrice,
+          updatedAt: new Date(),
+        })),
+      );
+
+      return newOrder;
+    });
 
     return NextResponse.json({
-      ...serializeOrder(createdOrder),
+      ...serializeOrder(createdOrder, cartItems),
       ordersResetAt: await getOrdersResetAt(),
     });
   } catch (error) {

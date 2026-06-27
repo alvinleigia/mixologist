@@ -12,13 +12,45 @@ export const orderStatuses = [
 
 export type OrderStatus = (typeof orderStatuses)[number];
 
+export const orderItemStatuses = [
+  "PENDING",
+  "PREPARING",
+  "READY",
+  "DELIVERED",
+  "CANCELLED",
+] as const;
+
+export type OrderItemStatus = (typeof orderItemStatuses)[number];
+
+export type OrderLineItem = {
+  id?: string;
+  organizationId?: string;
+  locationId?: string;
+  categoryId: string;
+  categoryName: string;
+  drinkId: string;
+  drinkName: string;
+  quantity: number;
+  notes: string | null;
+  unitPrice: string | null;
+  status: OrderItemStatus;
+  startedAt: string | null;
+  readyAt: string | null;
+  deliveredAt: string | null;
+  cancelledAt: string | null;
+};
+
 export type LocalCustomerOrder = {
   orderId: string;
   orderNo: number;
+  organizationId?: string;
+  locationId?: string;
   customerToken: string;
   customerName: string;
   categoryName: string;
   drinkName: string;
+  itemCount?: number;
+  items?: OrderLineItem[];
   status: OrderStatus;
   createdAt: string;
 };

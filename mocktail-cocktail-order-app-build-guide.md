@@ -4,7 +4,7 @@
 
 Build a **Next.js app** where customers can open a public order link, select a mocktail/cocktail, place an order, track order status on the same device, and cancel only before preparation starts.
 
-A **mixologist user** should see incoming orders, start preparing them, mark them ready, play a voice announcement calling the customer, and mark the order as delivered.
+A **ORDER_OPERATOR user** should see incoming orders, start preparing them, mark them ready, play a voice announcement calling the customer, and mark the order as delivered.
 
 All orders must be saved in **Supabase PostgreSQL** using **Drizzle ORM**. Use **Zod** for request validation.
 
@@ -51,11 +51,11 @@ Customer can:
 - View their active orders from localStorage
 - Cancel their own order only while it is `PENDING`
 
-### Mixologist
+### ORDER_OPERATOR
 
-Mixologist should be logged in or protected by a simple auth mechanism.
+ORDER_OPERATOR should be logged in or protected by a simple auth mechanism.
 
-Mixologist can:
+ORDER_OPERATOR can:
 
 - View active orders
 - Cancel an order only while it is `PENDING`
@@ -71,7 +71,7 @@ Admin can be added later.
 Future admin can:
 
 - View analytics
-- Manage mixologist users
+- Manage ORDER_OPERATOR users
 - Manage drinks if drinks are later moved to database
 
 ---
@@ -94,7 +94,7 @@ Important rule:
 
 ```txt
 Only PENDING orders can be cancelled.
-Once an order becomes PREPARING, neither customer nor mixologist can cancel it.
+Once an order becomes PREPARING, neither customer nor ORDER_OPERATOR can cancel it.
 ```
 
 Possible statuses:
@@ -116,7 +116,7 @@ Recommended routes:
 
 ```txt
 /order
-/mixologist
+/ORDER_OPERATOR
 /api/orders
 /api/orders/status
 /api/orders/[id]/cancel
@@ -143,7 +143,7 @@ src/
   app/
     order/
       page.tsx
-    mixologist/
+    ORDER_OPERATOR/
       page.tsx
     api/
       orders/
@@ -166,8 +166,8 @@ src/
     order/
       OrderForm.tsx
       CustomerOrderStatus.tsx
-    mixologist/
-      MixologistOrderBoard.tsx
+    ORDER_OPERATOR/
+      StaffOrderBoard.tsx
       OrderCard.tsx
 
   data/
@@ -316,7 +316,7 @@ import {
 
 export const userRoleEnum = pgEnum("user_role", [
   "ADMIN",
-  "MIXOLOGIST",
+  "ORDER_OPERATOR",
 ]);
 
 export const orderStatusEnum = pgEnum("order_status", [
@@ -329,7 +329,7 @@ export const orderStatusEnum = pgEnum("order_status", [
 
 export const cancelledByTypeEnum = pgEnum("cancelled_by_type", [
   "CUSTOMER",
-  "MIXOLOGIST",
+  "ORDER_OPERATOR",
   "ADMIN",
 ]);
 
@@ -633,20 +633,20 @@ If order is already `PREPARING`, return error:
 
 ---
 
-### Mixologist Cancel Order
+### ORDER_OPERATOR Cancel Order
 
 Same endpoint can be reused, but staff auth is required.
 
 Server rule:
 
 ```txt
-Mixologist can cancel only if order.status is PENDING.
+ORDER_OPERATOR can cancel only if order.status is PENDING.
 ```
 
-When cancelled by mixologist:
+When cancelled by ORDER_OPERATOR:
 
 ```ts
-cancelledByType = "MIXOLOGIST"
+cancelledByType = "ORDER_OPERATOR"
 cancelledByUserId = currentUser.id
 ```
 
@@ -748,7 +748,7 @@ deliveredAt = new Date()
 updatedAt = new Date()
 ```
 
-Delivered orders should be hidden from the active mixologist stack.
+Delivered orders should be hidden from the active ORDER_OPERATOR stack.
 
 ---
 
@@ -795,12 +795,12 @@ If status is `DELIVERED` or `CANCELLED`, it can remain in localStorage but shoul
 
 ---
 
-## 16. Mixologist Page Requirements
+## 16. ORDER_OPERATOR Page Requirements
 
 Route:
 
 ```txt
-/mixologist
+/ORDER_OPERATOR
 ```
 
 UI should show active orders sorted by creation time:
@@ -851,7 +851,7 @@ export function playAnnouncement(customerName: string, drinkName: string) {
 }
 ```
 
-When mixologist clicks `Play Message`:
+When ORDER_OPERATOR clicks `Play Message`:
 
 1. Play browser speech.
 2. Call `/api/orders/[id]/announce` to increment `announcementCount`.
@@ -873,7 +873,7 @@ Because every order is stored, analytics can later show:
 - Average preparation time
 - Average ready-to-delivered time
 - Number of announcements per order
-- Cancellation count by customer/mixologist
+- Cancellation count by customer/ORDER_OPERATOR
 
 Useful calculations:
 
@@ -961,7 +961,7 @@ Build in this order:
 - Validate `customerToken`
 - Block cancellation after `PREPARING`
 
-### Step 6: Mixologist dashboard
+### Step 6: ORDER_OPERATOR dashboard
 
 - Show active orders
 - Add Start Preparing
@@ -1008,7 +1008,8 @@ After MVP:
 - Add table number or location field
 - Add payment support
 - Add printed token/order slip
-- Add multiple mixologist counters
+- Add multiple ORDER_OPERATOR counters
 - Add status screen display for ready orders
 - Add sound chime before announcement
+
 

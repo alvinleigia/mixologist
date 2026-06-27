@@ -1,0 +1,36 @@
+import { NextRequest, NextResponse } from "next/server";
+import { ZodError } from "zod";
+
+import { requireRole } from "@/lib/auth";
+import { createStaffUser, getTenantAdminSnapshot } from "@/lib/tenant-admin";
+import { getCurrentTenantContext } from "@/lib/tenant-context";
+
+const tenantAdminRoles = [
+  "PLATFORM_ADMIN",
+  "COMPANY_OWNER",
+  "COMPANY_MANAGER",
+  "RESTAURANT_MANAGER",
+] as const;
+
+export async function POST(request: NextRequest) {
+  try {
+    const session = await requireRole([...tenantAdminRoles]);
+
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const tenantContext = await getCurrentTenantContext();
+    await createStaffUser(tenantContext, await request.json());
+    return NextResponse.json(await getTenantAdminSnapshot(tenantContext));
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return NextResponse.json({ error: error.flatten() }, { status: 400 });
+    }
+
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to create staff user." },
+      { status: 500 },
+    );
+  }
+}

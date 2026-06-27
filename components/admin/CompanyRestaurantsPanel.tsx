@@ -1,0 +1,328 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { MoreHorizontalIcon } from "lucide-react";
+import { toast } from "sonner";
+
+import { Spinner } from "@/components/shared/Spinner";
+import {
+  ReportBreakdown,
+  type ReportBreakdownRow,
+} from "@/components/admin/ReportBreakdown";
+import { SummaryCards } from "@/components/admin/SummaryCards";
+import { SectionHeader } from "@/components/shared/SectionHeader";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+type CompanyRestaurant = {
+  id: string;
+  name: string;
+  slug: string;
+  timezone: string;
+  currency: string;
+  isActive: boolean;
+  locations: {
+    id: string;
+    slug: string;
+    qrSlug: string | null;
+    name: string;
+    label: string | null;
+    timezone: string;
+    isActive: boolean;
+  }[];
+  locationsCount: number;
+  primaryLocation: {
+    name: string;
+    label: string | null;
+    slug: string;
+  } | null;
+};
+
+type CompanySummary = {
+  childRestaurants: number;
+  activeLocations: number;
+  activeStaffMemberships: number;
+  activeOrders: number;
+  completedOrders: number;
+};
+
+function getApiError(payload: unknown) {
+  if (payload && typeof payload === "object" && "error" in payload) {
+    const error = (payload as { error?: unknown }).error;
+
+    if (typeof error === "string") {
+      return error;
+    }
+  }
+
+  return "Action failed.";
+}
+
+type CompanyRestaurantsPanelProps = {
+  hasRealCompanyContext: boolean;
+};
+
+function CompanySetupRequired() {
+  return (
+    <Card className="rounded-xl border-stone-200 bg-white">
+      <CardHeader className="px-5 pt-5">
+        <SectionHeader
+          eyebrow="Company"
+          title="Create a parent company first"
+          meta="The bootstrap system company is hidden from admin workspaces."
+          className="mb-0"
+        />
+      </CardHeader>
+      <CardContent className="px-5 pb-5">
+        <div className="rounded-xl border border-dashed border-stone-300 bg-stone-50/80 p-6">
+          <p className="text-sm leading-6 text-stone-600">
+            You are signed in as the SaaS owner. Start from Platform, create a
+            parent company, then invite a company owner or manager to operate this
+            workspace.
+          </p>
+          <div className="mt-5">
+            <Button asChild>
+              <Link href="/platform">Go to Platform</Link>
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+export function CompanyRestaurantsPanel({
+  hasRealCompanyContext,
+}: CompanyRestaurantsPanelProps) {
+  const [restaurants, setRestaurants] = useState<CompanyRestaurant[]>([]);
+  const [summary, setSummary] = useState<CompanySummary | null>(null);
+  const [breakdown, setBreakdown] = useState<ReportBreakdownRow[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(hasRealCompanyContext);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
+
+  async function refreshCompanySummary() {
+    const summaryResponse = await fetch("/api/company/summary");
+
+    if (!summaryResponse.ok) {
+      return;
+    }
+
+    const summaryPayload = await summaryResponse.json();
+    setSummary(summaryPayload.summary ?? null);
+    setBreakdown(summaryPayload.breakdown ?? []);
+  }
+
+  useEffect(() => {
+    if (!hasRealCompanyContext) {
+      return;
+    }
+
+    async function loadRestaurants() {
+      const restaurantsResponse = await fetch("/api/company/restaurants");
+      const payload = await restaurantsResponse.json();
+
+      if (!restaurantsResponse.ok) {
+        setError(getApiError(payload));
+        setIsLoading(false);
+        return;
+      }
+
+      setRestaurants(payload.restaurants ?? []);
+      await refreshCompanySummary();
+
+      setError(null);
+      setIsLoading(false);
+    }
+
+    void loadRestaurants();
+  }, [hasRealCompanyContext]);
+
+  async function submitJson(path: string, body: unknown, action: string) {
+    setPendingAction(action);
+    const response = await fetch(path, {
+      method: path === "/api/company/restaurants" || path.endsWith("/staff") ? "POST" : "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const payload = await response.json();
+
+    if (!response.ok) {
+      const message = getApiError(payload);
+      setError(message);
+      toast.error(message);
+      setPendingAction(null);
+      return;
+    }
+
+    setRestaurants(payload.restaurants ?? []);
+    await refreshCompanySummary();
+    setError(null);
+    setPendingAction(null);
+    toast.success("Restaurants updated.");
+  }
+
+  return (
+    <div className="grid gap-6">
+      {!hasRealCompanyContext ? <CompanySetupRequired /> : null}
+
+      {hasRealCompanyContext ? (
+        <>
+      {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+
+      {summary ? (
+        <SummaryCards
+          cards={[
+            {
+              label: "Restaurants",
+              value: summary.childRestaurants,
+              helper: "Child restaurant tenants in this company.",
+            },
+            {
+              label: "Locations",
+              value: summary.activeLocations,
+              helper: "Active child restaurant locations.",
+            },
+            {
+              label: "Active orders",
+              value: summary.activeOrders,
+              helper: "Pending, preparing or ready orders.",
+            },
+            {
+              label: "Staff memberships",
+              value: summary.activeStaffMemberships,
+              helper: "Active child restaurant staff assignments.",
+            },
+            {
+              label: "Non-cancelled orders",
+              value: summary.completedOrders,
+              helper: "All-time child restaurant orders excluding cancellations.",
+            },
+          ]}
+        />
+      ) : null}
+
+      <ReportBreakdown
+        title="Restaurant activity"
+        description="Compare child restaurants by locations, staff and order activity."
+        emptyMessage="No restaurant activity to report yet."
+        rows={breakdown}
+      />
+
+      <Card className="rounded-xl border-stone-200 bg-white">
+        <CardHeader className="flex flex-row items-start justify-between gap-4 px-5 pt-5">
+          <div>
+            <h3 className="text-xl font-semibold text-stone-950">Restaurants</h3>
+            <p className="text-sm text-stone-500">
+              Create a restaurant only when you are ready to add its first location.
+            </p>
+          </div>
+          <Button asChild className="rounded-lg">
+            <Link href="/company/restaurants/new">Add restaurant</Link>
+          </Button>
+        </CardHeader>
+      </Card>
+
+      <Card className="rounded-xl border-stone-200 bg-white">
+        <CardHeader className="px-5 pt-5">
+          <h3 className="text-xl font-semibold text-stone-950">Child restaurants</h3>
+        </CardHeader>
+        <CardContent className="grid gap-3 px-5 pb-5">
+          {isLoading ? (
+            <div className="flex items-center gap-2 text-sm text-stone-500">
+              <Spinner className="text-stone-500" />
+              Loading restaurants...
+            </div>
+          ) : null}
+
+          {!isLoading && restaurants.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-stone-200 p-4 text-sm text-stone-500">
+              No child restaurants yet.
+            </p>
+          ) : null}
+
+          {restaurants.map((restaurant) => {
+            return (
+            <div
+              key={restaurant.id}
+              className="grid gap-4 rounded-lg border border-stone-200 bg-stone-50 p-4"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="font-semibold text-stone-950">{restaurant.name}</p>
+                  <p className="text-sm text-stone-500">
+                    {restaurant.slug} - {restaurant.timezone} - {restaurant.currency}
+                  </p>
+                  <p className="mt-1 text-xs text-stone-400">
+                    {restaurant.locationsCount} location
+                    {restaurant.locationsCount === 1 ? "" : "s"}
+                    {restaurant.primaryLocation
+                      ? ` - Primary: ${restaurant.primaryLocation.name}`
+                      : " - No location yet"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="rounded-md border border-stone-200 bg-white px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">
+                    {restaurant.isActive ? "Active" : "Disabled"}
+                  </span>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        disabled={Boolean(pendingAction)}
+                        className="rounded-lg border-stone-300 bg-white text-stone-900 hover:bg-stone-100"
+                        aria-label={`Open actions for ${restaurant.name}`}
+                      >
+                        <MoreHorizontalIcon className="size-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="bg-white text-stone-950">
+                      <DropdownMenuLabel>Restaurant actions</DropdownMenuLabel>
+                      <DropdownMenuItem asChild>
+                        <Link href={`/company/restaurants/${restaurant.id}`}>
+                          Edit restaurant settings
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href={`/company/restaurants/${restaurant.id}/locations`}>
+                          Manage locations
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator className="bg-stone-200" />
+                      <DropdownMenuItem
+                        variant={restaurant.isActive ? "destructive" : "default"}
+                        onSelect={() =>
+                          void submitJson(
+                            `/api/company/restaurants/${restaurant.id}`,
+                            { ...restaurant, isActive: !restaurant.isActive },
+                            `toggle:${restaurant.id}`,
+                          )
+                        }
+                      >
+                        {restaurant.isActive ? "Disable restaurant" : "Enable restaurant"}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
+            </div>
+            );
+          })}
+        </CardContent>
+      </Card>
+        </>
+      ) : null}
+    </div>
+  );
+}

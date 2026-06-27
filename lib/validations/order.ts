@@ -7,8 +7,16 @@ export const createOrderSchema = z
       .trim()
       .min(2, "Name is required")
       .max(80, "Name is too long"),
-    categoryId: z.string().min(1, "Category is required"),
-    drinkId: z.string().min(1, "Drink is required"),
+    items: z
+      .array(
+        z.object({
+          categoryId: z.string().uuid("Choose a valid category"),
+          drinkId: z.string().uuid("Choose a valid drink"),
+          quantity: z.coerce.number().int().min(1, "Quantity must be at least 1").max(20, "Quantity is too high"),
+          notes: z.string().trim().max(200, "Notes are too long").optional().or(z.literal("")),
+        }),
+      )
+      .min(1, "Add at least one drink"),
   });
 
 export const customerCancelOrderSchema = z.object({
@@ -29,6 +37,6 @@ export const orderStatusRequestSchema = z.object({
   ),
 });
 
-export const mixologistAccessSchema = z.object({
+export const staffAccessSchema = z.object({
   accessKey: z.string().min(4, "Access key is required"),
 });

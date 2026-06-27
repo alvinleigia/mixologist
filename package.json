@@ -2,13 +2,20 @@
   "name": "frontend",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "db:generate": "drizzle-kit generate",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "db:migrate": "node scripts/run-sql-migrations.mjs",
+    "db:reset:migrate": "node scripts/run-sql-migrations.mjs --reset --confirm-reset",
+    "db:verify:tenant": "node scripts/verify-tenant-foundation.mjs",
+    "db:bootstrap:platform": "node scripts/bootstrap-platform-owner.mjs"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",

@@ -1,11 +1,12 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getDb } from "@/db";
 import { orders } from "@/db/schema";
-import { requireMixologistSession } from "@/lib/auth";
+import { requireStaffSession } from "@/lib/auth";
 import { customerCancelOrderSchema, staffCancelOrderSchema } from "@/lib/validations/order";
 import { serializeOrder } from "@/lib/orders";
+import { getCurrentTenantContext } from "@/lib/tenant-context";
 
 export async function POST(
   request: NextRequest,
@@ -14,10 +15,20 @@ export async function POST(
   try {
     const { id } = await context.params;
     const body = await request.json().catch(() => ({}));
-    const session = await requireMixologistSession();
+    const session = await requireStaffSession();
     const isStaff = Boolean(session);
+    const tenantContext = await getCurrentTenantContext();
     const db = getDb();
-    const [order] = await db.select().from(orders).where(eq(orders.id, id));
+    const [order] = await db
+      .select()
+      .from(orders)
+      .where(
+        and(
+          eq(orders.id, id),
+          eq(orders.organizationId, tenantContext.organizationId),
+          eq(orders.locationId, tenantContext.locationId),
+        ),
+      );
 
     if (!order) {
       return NextResponse.json({ error: "Order not found." }, { status: 404 });
@@ -36,7 +47,7 @@ export async function POST(
         return NextResponse.json(
           {
             error:
-              "Mixologists can only cancel orders while they are pending or ready for pickup.",
+              "Staff can only cancel orders while they are pending or ready for pickup.",
           },
           { status: 409 },
         );
@@ -48,10 +59,16 @@ export async function POST(
           status: "CANCELLED",
           cancelReason: parsed.data.cancelReason?.trim() || null,
           cancelledAt: new Date(),
-          cancelledByType: "MIXOLOGIST",
+          cancelledByType: "STAFF",
           updatedAt: new Date(),
         })
-        .where(eq(orders.id, id))
+        .where(
+          and(
+            eq(orders.id, id),
+            eq(orders.organizationId, tenantContext.organizationId),
+            eq(orders.locationId, tenantContext.locationId),
+          ),
+        )
         .returning();
 
       return NextResponse.json(serializeOrder(updatedOrder));
@@ -82,7 +99,13 @@ export async function POST(
         cancelledByType: "CUSTOMER",
         updatedAt: new Date(),
       })
-      .where(eq(orders.id, id))
+      .where(
+        and(
+          eq(orders.id, id),
+          eq(orders.organizationId, tenantContext.organizationId),
+          eq(orders.locationId, tenantContext.locationId),
+        ),
+      )
       .returning();
 
     return NextResponse.json(serializeOrder(updatedOrder));

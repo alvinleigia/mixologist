@@ -1,25 +1,36 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getDb } from "@/db";
 import { orders } from "@/db/schema";
-import { requireMixologistSession } from "@/lib/auth";
+import { requireStaffSession } from "@/lib/auth";
 import { serializeOrder } from "@/lib/orders";
+import { getCurrentTenantContext } from "@/lib/tenant-context";
 
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const session = await requireMixologistSession();
+    const session = await requireStaffSession();
 
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { id } = await context.params;
+    const tenantContext = await getCurrentTenantContext();
     const db = getDb();
-    const [order] = await db.select().from(orders).where(eq(orders.id, id));
+    const [order] = await db
+      .select()
+      .from(orders)
+      .where(
+        and(
+          eq(orders.id, id),
+          eq(orders.organizationId, tenantContext.organizationId),
+          eq(orders.locationId, tenantContext.locationId),
+        ),
+      );
 
     if (!order) {
       return NextResponse.json({ error: "Order not found." }, { status: 404 });
@@ -39,7 +50,13 @@ export async function POST(
         readyAt: new Date(),
         updatedAt: new Date(),
       })
-      .where(eq(orders.id, id))
+      .where(
+        and(
+          eq(orders.id, id),
+          eq(orders.organizationId, tenantContext.organizationId),
+          eq(orders.locationId, tenantContext.locationId),
+        ),
+      )
       .returning();
 
     return NextResponse.json(serializeOrder(updatedOrder));

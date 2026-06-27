@@ -1,19 +1,31 @@
 import { DefaultSession } from "next-auth";
 
+import type { MembershipRole } from "@/lib/staff-auth";
+
 declare module "next-auth" {
   interface Session {
     user: DefaultSession["user"] & {
-      role: "MIXOLOGIST";
+      id: string;
+      role: MembershipRole;
+      organizationId: string;
+      locationId: string;
+      username?: string;
     };
   }
 
   interface User {
-    role: "MIXOLOGIST";
+    role: MembershipRole;
+    organizationId: string;
+    locationId: string;
+    username?: string;
   }
 }
 
 declare module "next-auth/jwt" {
   interface JWT {
-    role?: "MIXOLOGIST";
+    role?: MembershipRole;
+    organizationId?: string;
+    locationId?: string;
+    username?: string;
   }
 }

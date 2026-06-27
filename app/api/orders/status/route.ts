@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getCustomerOrders, serializeOrder } from "@/lib/orders";
+import { getCustomerOrders, getOrderItemsForOrders, serializeOrder } from "@/lib/orders";
 import { getOrdersResetAt } from "@/lib/order-reset";
+import { getCurrentTenantContext } from "@/lib/tenant-context";
 import { orderStatusRequestSchema } from "@/lib/validations/order";
 
 export async function POST(request: NextRequest) {
@@ -13,9 +14,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     }
 
-    const matchingOrders = await getCustomerOrders(parsed.data.orders);
+    const tenantContext = await getCurrentTenantContext();
+    const matchingOrders = await getCustomerOrders(parsed.data.orders, tenantContext);
+    const itemMap = await getOrderItemsForOrders(
+      matchingOrders.map((order) => order.id),
+      tenantContext,
+    );
     return NextResponse.json({
-      orders: matchingOrders.map(serializeOrder),
+      orders: matchingOrders.map((order) => serializeOrder(order, itemMap.get(order.id) ?? [])),
       ordersResetAt: await getOrdersResetAt(),
     });
   } catch (error) {

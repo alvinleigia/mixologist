@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
-import { LocalCustomerOrder } from "@/lib/constants";
+import { LocalCustomerOrder, OrderLineItem } from "@/lib/constants";
 import {
   readStoredCustomerOrders,
   syncCustomerOrdersResetMarker,
@@ -32,6 +32,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 
 type ApiOrder = LocalCustomerOrder & {
+  items?: OrderLineItem[];
+  itemCount?: number;
   startedAt?: string | null;
   readyAt?: string | null;
   deliveredAt?: string | null;
@@ -51,6 +53,7 @@ export function CustomerOrderStatus({ refreshKey }: CustomerOrderStatusProps) {
 
   useEffect(() => {
     let isMounted = true;
+    let hasHydratedStoredOrders = false;
 
     async function loadOrders() {
       const prunedStoredOrders = readStoredCustomerOrders();
@@ -59,7 +62,10 @@ export function CustomerOrderStatus({ refreshKey }: CustomerOrderStatusProps) {
         return;
       }
 
-      setOrders(prunedStoredOrders);
+      if (!hasHydratedStoredOrders) {
+        setOrders(prunedStoredOrders);
+        hasHydratedStoredOrders = true;
+      }
 
       if (prunedStoredOrders.length === 0) {
         setIsLoading(false);
@@ -98,22 +104,17 @@ export function CustomerOrderStatus({ refreshKey }: CustomerOrderStatusProps) {
       }
 
       const nextOrders = payload.orders.map((order: ApiOrder) => ({
-        orderId: order.orderId,
-        orderNo: order.orderNo,
+        ...order,
         customerToken:
           prunedStoredOrders.find((storedOrder) => storedOrder.orderId === order.orderId)
-            ?.customerToken ?? "",
-        customerName: order.customerName,
-        categoryName: order.categoryName,
-        drinkName: order.drinkName,
-        status: order.status,
-        createdAt: order.createdAt,
+            ?.customerToken ?? order.customerToken,
       }));
 
       writeStoredCustomerOrders(nextOrders);
 
       if (isMounted) {
-        setOrders(payload.orders);
+        setOrders(nextOrders);
+        setError(null);
         setIsLoading(false);
       }
     }
@@ -211,11 +212,34 @@ export function CustomerOrderStatus({ refreshKey }: CustomerOrderStatusProps) {
                     {order.drinkName}
                   </h3>
                   <p className="text-sm text-stone-600">
-                    {order.categoryName} for {order.customerName}
+                    {order.itemCount ?? order.items?.reduce((sum, item) => sum + item.quantity, 0) ?? 1} item(s) for {order.customerName}
                   </p>
                 </div>
                 <OrderStatusBadge status={order.status} />
               </div>
+
+              {order.items?.length ? (
+                <div className="mt-4 grid gap-2">
+                  {order.items.map((item) => (
+                    <div
+                      key={item.id ?? `${order.orderId}-${item.drinkId}`}
+                      className="rounded-lg border border-stone-200 bg-white px-3 py-2"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium text-stone-900">
+                            {item.drinkName} x{item.quantity}
+                          </p>
+                          {item.notes ? (
+                            <p className="mt-1 text-xs text-stone-500">Note: {item.notes}</p>
+                          ) : null}
+                        </div>
+                        <OrderStatusBadge status={item.status} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
 
               <p className="mt-4 text-sm text-stone-600">
                 {order.status === "PENDING" && "Your order is queued and can still be cancelled."}

@@ -1,14 +1,16 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 
-type MixologistRole = "MIXOLOGIST";
+import { authenticateStaff } from "@/lib/staff-auth";
+import { resolveLocationAccess } from "@/lib/location-access";
+import type { MembershipRole } from "@/lib/staff-auth";
 
-export const { auth, handlers, signIn, signOut } = NextAuth({
+export const { auth, handlers, signIn, signOut, unstable_update } = NextAuth({
   session: {
     strategy: "jwt",
   },
   pages: {
-    signIn: "/mixologist/login",
+    signIn: "/staff/login",
   },
   providers: [
     Credentials({
@@ -16,43 +18,65 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         username: { label: "Username", type: "text" },
         password: { label: "Password", type: "password" },
       },
-      authorize(credentials) {
-        const configuredUsername = process.env.MIXOLOGIST_USERNAME;
-        const configuredPassword = process.env.MIXOLOGIST_PASSWORD;
-
-        if (!configuredUsername || !configuredPassword) {
-          throw new Error(
-            "MIXOLOGIST_USERNAME and MIXOLOGIST_PASSWORD must be set in .env.local.",
-          );
-        }
-
-        if (
-          credentials?.username !== configuredUsername ||
-          credentials?.password !== configuredPassword
-        ) {
-          return null;
-        }
-
-        return {
-          id: "mixologist",
-          name: configuredUsername,
-          role: "MIXOLOGIST" satisfies MixologistRole,
-        };
+      async authorize(credentials) {
+        return authenticateStaff(credentials?.username, credentials?.password);
       },
     }),
   ],
   callbacks: {
-    jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       if (user) {
-        token.role = (user as { role?: MixologistRole }).role ?? "MIXOLOGIST";
+        const staffUser = user as {
+          id: string;
+          role?: MembershipRole;
+          organizationId?: string;
+          locationId?: string;
+          username?: string;
+        };
+
+        token.sub = staffUser.id;
+        token.role = staffUser.role ?? "ORDER_OPERATOR";
+        token.organizationId = staffUser.organizationId;
+        token.locationId = staffUser.locationId;
+        token.username = staffUser.username;
+      }
+
+      if (trigger === "update" && token.sub) {
+        const nextUser = session?.user as
+          | {
+              organizationId?: unknown;
+              locationId?: unknown;
+            }
+          | undefined;
+        const organizationId =
+          typeof nextUser?.organizationId === "string" ? nextUser.organizationId : "";
+        const locationId =
+          typeof nextUser?.locationId === "string" ? nextUser.locationId : "";
+
+        if (organizationId && locationId) {
+          const access = await resolveLocationAccess(token.sub, organizationId, locationId);
+
+          if (access) {
+            token.role = access.role;
+            token.organizationId = access.organizationId;
+            token.locationId = access.locationId;
+          }
+        }
       }
 
       return token;
     },
     session({ session, token }) {
       if (session.user) {
+        session.user.id = typeof token.sub === "string" ? token.sub : "";
         session.user.role =
-          (typeof token.role === "string" ? token.role : "MIXOLOGIST") as MixologistRole;
+          (typeof token.role === "string" ? token.role : "ORDER_OPERATOR") as MembershipRole;
+        session.user.organizationId =
+          typeof token.organizationId === "string" ? token.organizationId : "";
+        session.user.locationId =
+          typeof token.locationId === "string" ? token.locationId : "";
+        session.user.username =
+          typeof token.username === "string" ? token.username : undefined;
       }
 
       return session;
