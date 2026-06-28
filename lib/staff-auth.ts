@@ -2,7 +2,9 @@ import { and, eq, isNull, or } from "drizzle-orm";
 
 import { getDb } from "@/db";
 import { locations, memberships, organizations, users } from "@/db/schema";
+import { getTenantSubscriptionAccess } from "@/lib/billing";
 import { verifyPassword } from "@/lib/passwords";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export type MembershipRole =
   | "PLATFORM_ADMIN"
@@ -33,6 +35,16 @@ export async function authenticateStaff(
   const password = typeof passwordValue === "string" ? passwordValue : "";
 
   if (!identifier || !password) {
+    return null;
+  }
+
+  const loginRateLimit = checkRateLimit({
+    key: `auth:credentials:${identifier}`,
+    limit: 10,
+    windowMs: 15 * 60_000,
+  });
+
+  if (!loginRateLimit.allowed) {
     return null;
   }
 
@@ -74,6 +86,12 @@ export async function authenticateStaff(
   const isValidPassword = await verifyPassword(password, record.passwordHash);
 
   if (!isValidPassword) {
+    return null;
+  }
+
+  const commercialAccess = await getTenantSubscriptionAccess(record.organizationId);
+
+  if (!commercialAccess.allowed) {
     return null;
   }
 

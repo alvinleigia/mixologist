@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { FormField } from "@/components/shared/FormField";
+import { StaffInviteForm } from "@/components/admin/StaffInviteForm";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -42,14 +43,6 @@ type StaffAccess = {
   name: string;
   role: MembershipRole;
   isActive: boolean;
-};
-
-type StaffDraft = {
-  username: string;
-  name: string;
-  email: string;
-  password?: string;
-  role: StaffRole;
 };
 
 function getApiError(payload: unknown) {
@@ -104,10 +97,12 @@ function StaffRoleSelect({
 
 function FormActions({
   backHref = "/restaurant",
+  isDisabled = false,
   isSaving,
   submitLabel,
 }: {
   backHref?: string;
+  isDisabled?: boolean;
   isSaving: boolean;
   submitLabel: string;
 }) {
@@ -115,7 +110,7 @@ function FormActions({
     <div className="flex flex-wrap gap-3 pt-2">
       <Button
         type="submit"
-        disabled={isSaving}
+        disabled={isSaving || isDisabled}
         className="rounded-lg bg-stone-950 text-white hover:bg-stone-800"
       >
         {isSaving ? "Saving..." : submitLabel}
@@ -230,8 +225,73 @@ export function TenantLocationSettingsForm({
   });
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [qrSlugStatus, setQrSlugStatus] = useState<{
+    available: boolean | null;
+    error: string | null;
+    isChecking: boolean;
+  }>({
+    available: null,
+    error: null,
+    isChecking: false,
+  });
+
+  useEffect(() => {
+    const qrSlug = draft.qrSlug.trim();
+
+    if (!qrSlug) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      try {
+        const response = await fetch(
+          `/api/tenant/admin/location/qr-slug?value=${encodeURIComponent(qrSlug)}`,
+          { signal: controller.signal },
+        );
+        const payload = await response.json();
+
+        if (!response.ok) {
+          const message = getApiError(payload);
+          setQrSlugStatus({ available: false, error: message, isChecking: false });
+          return;
+        }
+
+        setQrSlugStatus({
+          available: Boolean(payload.available),
+          error: payload.available ? null : "This QR slug is already used by another location.",
+          isChecking: false,
+        });
+      } catch (err) {
+        if ((err as DOMException).name === "AbortError") {
+          return;
+        }
+
+        setQrSlugStatus({
+          available: false,
+          error: "Could not check QR slug availability.",
+          isChecking: false,
+        });
+      }
+    }, 350);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeout);
+    };
+  }, [draft.qrSlug]);
 
   async function save() {
+    if (qrSlugStatus.isChecking) {
+      setError("Please wait while QR slug availability is checked.");
+      return;
+    }
+
+    if (qrSlugStatus.available === false) {
+      setError(qrSlugStatus.error ?? "QR slug is not available.");
+      return;
+    }
+
     setIsSaving(true);
     try {
       await submitJson("/api/tenant/admin/location", "PATCH", draft);
@@ -245,6 +305,15 @@ export function TenantLocationSettingsForm({
       setIsSaving(false);
     }
   }
+
+  const qrSlugHelp =
+    qrSlugStatus.isChecking
+      ? "Checking QR slug availability..."
+      : qrSlugStatus.error
+        ? qrSlugStatus.error
+        : draft.qrSlug.trim()
+          ? "QR slug is available."
+          : "Used in the public customer link, for example /order?qr=main-lobby.";
 
   return (
     <Card className="rounded-xl border-stone-200 bg-white">
@@ -280,16 +349,36 @@ export function TenantLocationSettingsForm({
                 }
               />
             </FormField>
-            <FormField label="QR / menu slug">
+            <FormField label="QR slug">
               <Input
                 value={draft.qrSlug}
-                onChange={(event) =>
+                onChange={(event) => {
+                  const nextQrSlug = event.target.value.toLowerCase();
+
                   setDraft((current) => ({
                     ...current,
-                    qrSlug: event.target.value.toLowerCase(),
-                  }))
-                }
+                    qrSlug: nextQrSlug,
+                  }));
+                  setQrSlugStatus(
+                    nextQrSlug.trim()
+                      ? { available: null, error: null, isChecking: true }
+                      : { available: true, error: null, isChecking: false },
+                  );
+                }}
+                aria-invalid={Boolean(qrSlugStatus.error)}
+                className="aria-invalid:border-rose-500 aria-invalid:ring-2 aria-invalid:ring-rose-100"
               />
+              <p
+                className={
+                  qrSlugStatus.error
+                    ? "text-sm text-rose-600"
+                    : draft.qrSlug.trim() && qrSlugStatus.available
+                      ? "text-sm text-emerald-700"
+                      : "text-sm text-stone-500"
+                }
+              >
+                {qrSlugHelp}
+              </p>
             </FormField>
           </div>
           <FormField label="Timezone">
@@ -314,7 +403,11 @@ export function TenantLocationSettingsForm({
             />
             Location is active
           </label>
-          <FormActions isSaving={isSaving} submitLabel="Save changes" />
+          <FormActions
+            isDisabled={qrSlugStatus.isChecking || qrSlugStatus.available === false}
+            isSaving={isSaving}
+            submitLabel={qrSlugStatus.isChecking ? "Checking..." : "Save changes"}
+          />
         </form>
       </CardContent>
     </Card>
@@ -322,188 +415,18 @@ export function TenantLocationSettingsForm({
 }
 
 export function TenantStaffInviteForm() {
-  const [draft, setDraft] = useState<StaffDraft>({
-    username: "",
-    name: "",
-    email: "",
-    role: "ORDER_OPERATOR",
-  });
-  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function save() {
-    setIsSaving(true);
-    try {
-      const payload = await submitJson("/api/tenant/admin/staff/invite", "POST", draft);
-      setInviteUrl(typeof payload.inviteUrl === "string" ? payload.inviteUrl : null);
-      setDraft({ username: "", name: "", email: "", role: "ORDER_OPERATOR" });
-      setError(null);
-      toast.success("Invite created.");
-      setIsSaving(false);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Action failed.";
-      setError(message);
-      toast.error(message);
-      setIsSaving(false);
-    }
-  }
-
   return (
-    <StaffDetailsForm
-      draft={draft}
-      error={error}
-      inviteUrl={inviteUrl}
-      isSaving={isSaving}
-      onChange={setDraft}
-      onSubmit={save}
-      submitLabel="Create invite"
+    <StaffInviteForm
+      apiPath="/api/tenant/admin/staff/invite"
+      backHref="/restaurant"
+      defaultRole="ORDER_OPERATOR"
+      description="Create a one-time invite link for this restaurant location."
+      roles={[
+        { label: "Restaurant Manager", value: "RESTAURANT_MANAGER" },
+        { label: "Order Operator", value: "ORDER_OPERATOR" },
+      ]}
       title="Invite staff"
     />
-  );
-}
-
-export function TenantStaffCreateForm() {
-  const router = useRouter();
-  const [draft, setDraft] = useState<StaffDraft>({
-    username: "",
-    name: "",
-    email: "",
-    password: "",
-    role: "ORDER_OPERATOR",
-  });
-  const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function save() {
-    setIsSaving(true);
-    try {
-      await submitJson("/api/tenant/admin/staff", "POST", draft);
-      toast.success("Staff user created.");
-      router.push("/restaurant");
-      router.refresh();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Action failed.";
-      setError(message);
-      toast.error(message);
-      setIsSaving(false);
-    }
-  }
-
-  return (
-    <StaffDetailsForm
-      draft={draft}
-      error={error}
-      isSaving={isSaving}
-      onChange={setDraft}
-      onSubmit={save}
-      showPassword
-      submitLabel="Add staff"
-      title="Add staff"
-    />
-  );
-}
-
-function StaffDetailsForm({
-  draft,
-  error,
-  inviteUrl,
-  isSaving,
-  onChange,
-  onSubmit,
-  showPassword = false,
-  submitLabel,
-  title,
-}: {
-  draft: StaffDraft;
-  error: string | null;
-  inviteUrl?: string | null;
-  isSaving: boolean;
-  onChange: (draft: StaffDraft) => void;
-  onSubmit: () => Promise<void>;
-  showPassword?: boolean;
-  submitLabel: string;
-  title: string;
-}) {
-  return (
-    <Card className="rounded-xl border-stone-200 bg-white">
-      <CardHeader className="px-5 pt-5">
-        <h3 className="text-2xl font-semibold text-stone-950">{title}</h3>
-        <p className="text-sm text-stone-500">
-          Staff created here is assigned to this restaurant location.
-        </p>
-      </CardHeader>
-      <CardContent className="px-5 pb-5">
-        <form
-          className="grid gap-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void onSubmit();
-          }}
-        >
-          {error ? <p className="text-sm text-rose-600">{error}</p> : null}
-          <div className="grid gap-4 md:grid-cols-3">
-            <FormField label="Username">
-              <Input
-                value={draft.username}
-                onChange={(event) =>
-                  onChange({ ...draft, username: event.target.value })
-                }
-              />
-            </FormField>
-            <FormField label="Name">
-              <Input
-                value={draft.name}
-                onChange={(event) => onChange({ ...draft, name: event.target.value })}
-              />
-            </FormField>
-            <FormField label="Email">
-              <Input
-                type="email"
-                value={draft.email}
-                onChange={(event) => onChange({ ...draft, email: event.target.value })}
-              />
-            </FormField>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            {showPassword ? (
-              <FormField label="Password">
-                <Input
-                  type="password"
-                  value={draft.password ?? ""}
-                  onChange={(event) =>
-                    onChange({ ...draft, password: event.target.value })
-                  }
-                />
-              </FormField>
-            ) : null}
-            <FormField label="Role">
-              <StaffRoleSelect
-                value={draft.role}
-                onChange={(role) => onChange({ ...draft, role })}
-              />
-            </FormField>
-          </div>
-          <FormActions isSaving={isSaving} submitLabel={submitLabel} />
-        </form>
-        {inviteUrl ? (
-          <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-3">
-            <p className="break-all text-sm text-stone-700">{inviteUrl}</p>
-            <Button
-              type="button"
-              variant="outline"
-              className="mt-3 rounded-lg bg-white"
-              onClick={() => {
-                void navigator.clipboard.writeText(inviteUrl);
-                toast.success("Invite link copied.");
-              }}
-            >
-              Copy Link
-            </Button>
-          </div>
-        ) : null}
-      </CardContent>
-    </Card>
   );
 }
 

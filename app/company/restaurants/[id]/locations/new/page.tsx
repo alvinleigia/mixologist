@@ -34,7 +34,11 @@ export default async function NewCompanyRestaurantLocationPage(
       eyebrow="Company"
       title={`Add location to ${restaurant.name}`}
       description="Create a branch, counter or service point for this restaurant."
-      user={{ name: session.user.name, role: session.user.role }}
+      user={{
+        name: session.user.name,
+        organizationId: session.user.organizationId,
+        role: session.user.role,
+      }}
     >
       <CreateLocationForm backHref={backHref} restaurantId={restaurant.id} />
     </SaasAdminShell>

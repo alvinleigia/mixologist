@@ -10,6 +10,7 @@ import {
   ReportBreakdown,
   type ReportBreakdownRow,
 } from "@/components/admin/ReportBreakdown";
+import { OperationalReports } from "@/components/admin/OperationalReports";
 import { SummaryCards } from "@/components/admin/SummaryCards";
 import { SectionHeader } from "@/components/shared/SectionHeader";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import type { OperationalReport, ReportRange } from "@/lib/saas-reports";
 
 type CompanyRestaurant = {
   id: string;
@@ -51,6 +53,8 @@ type CompanySummary = {
   childRestaurants: number;
   activeLocations: number;
   activeStaffMemberships: number;
+  activeMenuCategories: number;
+  activeMenuItems: number;
   activeOrders: number;
   completedOrders: number;
 };
@@ -105,13 +109,15 @@ export function CompanyRestaurantsPanel({
 }: CompanyRestaurantsPanelProps) {
   const [restaurants, setRestaurants] = useState<CompanyRestaurant[]>([]);
   const [summary, setSummary] = useState<CompanySummary | null>(null);
+  const [report, setReport] = useState<OperationalReport | null>(null);
+  const [reportRange, setReportRange] = useState<ReportRange>("30d");
   const [breakdown, setBreakdown] = useState<ReportBreakdownRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(hasRealCompanyContext);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
 
-  async function refreshCompanySummary() {
-    const summaryResponse = await fetch("/api/company/summary");
+  async function refreshCompanySummary(range = reportRange) {
+    const summaryResponse = await fetch(`/api/company/summary?range=${range}`);
 
     if (!summaryResponse.ok) {
       return;
@@ -120,6 +126,7 @@ export function CompanyRestaurantsPanel({
     const summaryPayload = await summaryResponse.json();
     setSummary(summaryPayload.summary ?? null);
     setBreakdown(summaryPayload.breakdown ?? []);
+    setReport(summaryPayload.report ?? null);
   }
 
   useEffect(() => {
@@ -128,7 +135,10 @@ export function CompanyRestaurantsPanel({
     }
 
     async function loadRestaurants() {
-      const restaurantsResponse = await fetch("/api/company/restaurants");
+      const [restaurantsResponse, summaryResponse] = await Promise.all([
+        fetch("/api/company/restaurants"),
+        fetch("/api/company/summary?range=30d"),
+      ]);
       const payload = await restaurantsResponse.json();
 
       if (!restaurantsResponse.ok) {
@@ -138,7 +148,13 @@ export function CompanyRestaurantsPanel({
       }
 
       setRestaurants(payload.restaurants ?? []);
-      await refreshCompanySummary();
+
+      if (summaryResponse.ok) {
+        const summaryPayload = await summaryResponse.json();
+        setSummary(summaryPayload.summary ?? null);
+        setBreakdown(summaryPayload.breakdown ?? []);
+        setReport(summaryPayload.report ?? null);
+      }
 
       setError(null);
       setIsLoading(false);
@@ -165,7 +181,7 @@ export function CompanyRestaurantsPanel({
     }
 
     setRestaurants(payload.restaurants ?? []);
-    await refreshCompanySummary();
+    await refreshCompanySummary(reportRange);
     setError(null);
     setPendingAction(null);
     toast.success("Restaurants updated.");
@@ -203,6 +219,16 @@ export function CompanyRestaurantsPanel({
               helper: "Active child restaurant staff assignments.",
             },
             {
+              label: "Menu categories",
+              value: summary.activeMenuCategories,
+              helper: "Active menu sections across child restaurants.",
+            },
+            {
+              label: "Menu items",
+              value: summary.activeMenuItems,
+              helper: "Active products across child restaurants.",
+            },
+            {
               label: "Non-cancelled orders",
               value: summary.completedOrders,
               helper: "All-time child restaurant orders excluding cancellations.",
@@ -217,6 +243,19 @@ export function CompanyRestaurantsPanel({
         emptyMessage="No restaurant activity to report yet."
         rows={breakdown}
       />
+
+      {report ? (
+        <OperationalReports
+          exportHref={`/api/company/reports/export?range=${reportRange}`}
+          isLoading={isLoading}
+          range={reportRange}
+          report={report}
+          onRangeChange={(nextRange) => {
+            setReportRange(nextRange);
+            void refreshCompanySummary(nextRange);
+          }}
+        />
+      ) : null}
 
       <Card className="rounded-xl border-stone-200 bg-white">
         <CardHeader className="flex flex-row items-start justify-between gap-4 px-5 pt-5">

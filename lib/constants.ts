@@ -43,6 +43,7 @@ export type OrderLineItem = {
 export type LocalCustomerOrder = {
   orderId: string;
   orderNo: number;
+  orderDate?: string;
   organizationId?: string;
   locationId?: string;
   customerToken: string;

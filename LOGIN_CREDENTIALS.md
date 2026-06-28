@@ -42,7 +42,8 @@ Restaurant managers, company users and order operators should be created from th
 | --- | --- | --- |
 | `/order` | Customer order page | Public, no login |
 | `/staff/login` | Staff login page | Public login page |
-| `/staff` | Live order operations and menu manager | `PLATFORM_ADMIN`, `COMPANY_OWNER`, `COMPANY_MANAGER`, `RESTAURANT_MANAGER`, `ORDER_OPERATOR` |
+| `/operations/orders` | Live order operations | `RESTAURANT_MANAGER`, `ORDER_OPERATOR` |
+| `/operations/menu` | Menu manager | `RESTAURANT_MANAGER` |
 | `/restaurant` | Restaurant tenant admin area | `PLATFORM_ADMIN`, `COMPANY_OWNER`, `COMPANY_MANAGER`, `RESTAURANT_MANAGER` |
 | `/company` | Company admin area for multiple restaurants | `PLATFORM_ADMIN`, `COMPANY_OWNER`, `COMPANY_MANAGER` |
 | `/platform` | Parent SaaS/platform admin area | `PLATFORM_ADMIN` |

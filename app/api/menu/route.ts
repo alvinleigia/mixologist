@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 
 import { getPublicMenu } from "@/lib/menu";
-import { getCurrentTenantContext } from "@/lib/tenant-context";
+import { getPublicTenantContextFromRequest } from "@/lib/tenant-context";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const tenantContext = await getCurrentTenantContext();
+    const tenantContext = await getPublicTenantContextFromRequest(request);
     const categories = await getPublicMenu(tenantContext);
     return NextResponse.json({ categories });
   } catch (error) {

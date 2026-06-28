@@ -1,4 +1,9 @@
 import { auth } from "@/auth";
+import { and, eq } from "drizzle-orm";
+
+import { getDb } from "@/db";
+import { locations, organizations } from "@/db/schema";
+import { assertTenantSubscriptionAccess } from "@/lib/billing";
 import {
   DEFAULT_LOCATION_ID,
   DEFAULT_RESTAURANT_ORGANIZATION_ID,
@@ -20,6 +25,8 @@ export async function getCurrentTenantContext() {
   const session = await auth();
 
   if (session?.user.organizationId && session.user.locationId) {
+    await assertTenantSubscriptionAccess(session.user.organizationId);
+
     return {
       organizationId: session.user.organizationId,
       locationId: session.user.locationId,
@@ -31,4 +38,59 @@ export async function getCurrentTenantContext() {
   }
 
   return getDefaultTenantContext();
+}
+
+export async function getTenantContextFromQrSlug(qrSlug: string) {
+  const normalizedQrSlug = qrSlug.trim().toLowerCase();
+
+  if (!normalizedQrSlug) {
+    return getDefaultTenantContext();
+  }
+
+  const db = getDb();
+  const [record] = await db
+    .select({
+      organizationId: locations.organizationId,
+      locationId: locations.id,
+    })
+    .from(locations)
+    .innerJoin(organizations, eq(organizations.id, locations.organizationId))
+    .where(
+      and(
+        eq(locations.qrSlug, normalizedQrSlug),
+        eq(locations.isActive, true),
+        eq(organizations.isActive, true),
+      ),
+    );
+
+  if (!record) {
+    throw new Error("Invalid order QR link.");
+  }
+
+  await assertTenantSubscriptionAccess(record.organizationId);
+
+  return {
+    organizationId: record.organizationId,
+    locationId: record.locationId,
+  };
+}
+
+export async function getPublicTenantContextFromRequest(request: Request) {
+  const session = await auth();
+
+  if (session?.user.organizationId && session.user.locationId) {
+    await assertTenantSubscriptionAccess(session.user.organizationId);
+
+    return {
+      organizationId: session.user.organizationId,
+      locationId: session.user.locationId,
+    };
+  }
+
+  if (session?.user) {
+    throw new Error("Signed-in user is missing tenant or location access.");
+  }
+
+  const qrSlug = new URL(request.url).searchParams.get("qr");
+  return qrSlug ? getTenantContextFromQrSlug(qrSlug) : getDefaultTenantContext();
 }

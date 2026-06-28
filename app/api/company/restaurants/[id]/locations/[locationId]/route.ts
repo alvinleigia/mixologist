@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 
 import { requireRole } from "@/lib/auth";
+import { writeAuditLog } from "@/lib/audit-log";
 import { companyAdminRoles } from "@/lib/role-access";
 import {
   listCompanyRestaurants,
@@ -31,6 +32,22 @@ export async function PATCH(
     if (!location) {
       return NextResponse.json({ error: "Location not found." }, { status: 404 });
     }
+
+    await writeAuditLog({
+      actor: session.user,
+      organizationId: id,
+      locationId: location.id,
+      action: "company.location.update",
+      entityType: "location",
+      entityId: location.id,
+      metadata: {
+        companyOrganizationId: session.user.organizationId,
+        name: location.name,
+        slug: location.slug,
+        qrSlug: location.qrSlug,
+        isActive: location.isActive,
+      },
+    });
 
     return NextResponse.json({
       locations: await listRestaurantLocations(session.user.organizationId, id),

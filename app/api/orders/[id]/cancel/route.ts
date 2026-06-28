@@ -2,11 +2,17 @@ import { and, eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getDb } from "@/db";
-import { orders } from "@/db/schema";
+import { orderItems, orders } from "@/db/schema";
 import { requireStaffSession } from "@/lib/auth";
+import { writeAuditLog } from "@/lib/audit-log";
+import {
+  checkRateLimit,
+  getRequestRateLimitKey,
+  rateLimitResponse,
+} from "@/lib/rate-limit";
 import { customerCancelOrderSchema, staffCancelOrderSchema } from "@/lib/validations/order";
 import { serializeOrder } from "@/lib/orders";
-import { getCurrentTenantContext } from "@/lib/tenant-context";
+import { getCurrentTenantContext, getPublicTenantContextFromRequest } from "@/lib/tenant-context";
 
 export async function POST(
   request: NextRequest,
@@ -17,7 +23,22 @@ export async function POST(
     const body = await request.json().catch(() => ({}));
     const session = await requireStaffSession();
     const isStaff = Boolean(session);
-    const tenantContext = await getCurrentTenantContext();
+
+    if (!isStaff) {
+      const rateLimit = checkRateLimit({
+        key: getRequestRateLimitKey(request, "public:order-cancel"),
+        limit: 20,
+        windowMs: 60_000,
+      });
+
+      if (!rateLimit.allowed) {
+        return rateLimitResponse(rateLimit);
+      }
+    }
+
+    const tenantContext = isStaff
+      ? await getCurrentTenantContext()
+      : await getPublicTenantContextFromRequest(request);
     const db = getDb();
     const [order] = await db
       .select()
@@ -53,23 +74,60 @@ export async function POST(
         );
       }
 
-      const [updatedOrder] = await db
-        .update(orders)
-        .set({
-          status: "CANCELLED",
-          cancelReason: parsed.data.cancelReason?.trim() || null,
-          cancelledAt: new Date(),
-          cancelledByType: "STAFF",
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(orders.id, id),
-            eq(orders.organizationId, tenantContext.organizationId),
-            eq(orders.locationId, tenantContext.locationId),
-          ),
-        )
-        .returning();
+      const updatedOrder = await db.transaction(async (tx) => {
+        const now = new Date();
+
+        await tx
+          .update(orderItems)
+          .set({
+            status: "CANCELLED",
+            cancelledAt: now,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(orderItems.orderId, id),
+              eq(orderItems.organizationId, tenantContext.organizationId),
+              eq(orderItems.locationId, tenantContext.locationId),
+            ),
+          );
+
+        const [nextOrder] = await tx
+          .update(orders)
+          .set({
+            status: "CANCELLED",
+            cancelReason: parsed.data.cancelReason?.trim() || null,
+            cancelledAt: now,
+            cancelledByType: "STAFF",
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(orders.id, id),
+              eq(orders.organizationId, tenantContext.organizationId),
+              eq(orders.locationId, tenantContext.locationId),
+            ),
+          )
+          .returning();
+
+        return nextOrder;
+      });
+
+      await writeAuditLog({
+        actor: session?.user,
+        organizationId: tenantContext.organizationId,
+        locationId: tenantContext.locationId,
+        action: "order.cancel.staff",
+        entityType: "order",
+        entityId: updatedOrder.id,
+        metadata: {
+          orderNo: updatedOrder.orderNo,
+          previousStatus: order.status,
+          nextStatus: updatedOrder.status,
+          cancelledByType: updatedOrder.cancelledByType,
+          hasCancelReason: Boolean(updatedOrder.cancelReason),
+        },
+      });
 
       return NextResponse.json(serializeOrder(updatedOrder));
     }
@@ -90,23 +148,60 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const [updatedOrder] = await db
-      .update(orders)
-      .set({
-        status: "CANCELLED",
-        cancelReason: customerPayload.cancelReason?.trim() || null,
-        cancelledAt: new Date(),
-        cancelledByType: "CUSTOMER",
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(orders.id, id),
-          eq(orders.organizationId, tenantContext.organizationId),
-          eq(orders.locationId, tenantContext.locationId),
-        ),
-      )
-      .returning();
+    const updatedOrder = await db.transaction(async (tx) => {
+      const now = new Date();
+
+      await tx
+        .update(orderItems)
+        .set({
+          status: "CANCELLED",
+          cancelledAt: now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(orderItems.orderId, id),
+            eq(orderItems.organizationId, tenantContext.organizationId),
+            eq(orderItems.locationId, tenantContext.locationId),
+          ),
+        );
+
+      const [nextOrder] = await tx
+        .update(orders)
+        .set({
+          status: "CANCELLED",
+          cancelReason: customerPayload.cancelReason?.trim() || null,
+          cancelledAt: now,
+          cancelledByType: "CUSTOMER",
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(orders.id, id),
+            eq(orders.organizationId, tenantContext.organizationId),
+            eq(orders.locationId, tenantContext.locationId),
+          ),
+        )
+        .returning();
+
+      return nextOrder;
+    });
+
+    await writeAuditLog({
+      actor: null,
+      organizationId: tenantContext.organizationId,
+      locationId: tenantContext.locationId,
+      action: "order.cancel.customer",
+      entityType: "order",
+      entityId: updatedOrder.id,
+      metadata: {
+        orderNo: updatedOrder.orderNo,
+        previousStatus: order.status,
+        nextStatus: updatedOrder.status,
+        cancelledByType: updatedOrder.cancelledByType,
+        hasCancelReason: Boolean(updatedOrder.cancelReason),
+      },
+    });
 
     return NextResponse.json(serializeOrder(updatedOrder));
   } catch (error) {

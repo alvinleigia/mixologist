@@ -10,8 +10,12 @@ export default async function RestaurantStaffInvitePage() {
       activePath="/restaurant"
       eyebrow="Staff"
       title="Invite staff"
-      description="Create a location-scoped staff invitation link."
-      user={{ name: session.user.name, role: session.user.role }}
+      description="Create a one-time invitation link for this restaurant location."
+      user={{
+        name: session.user.name,
+        organizationId: session.user.organizationId,
+        role: session.user.role,
+      }}
     >
       <TenantStaffInviteForm />
     </SaasAdminShell>

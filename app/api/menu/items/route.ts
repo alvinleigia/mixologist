@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { requireStaffSession } from "@/lib/auth";
+import { requireMenuManagerSession } from "@/lib/auth";
+import { writeAuditLog } from "@/lib/audit-log";
 import { createMenuItem, getAdminMenu } from "@/lib/menu";
 import { getCurrentTenantContext } from "@/lib/tenant-context";
 import { menuItemSchema } from "@/lib/validations/menu";
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await requireStaffSession();
+    const session = await requireMenuManagerSession();
 
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -21,7 +22,23 @@ export async function POST(request: NextRequest) {
     }
 
     const tenantContext = await getCurrentTenantContext();
-    await createMenuItem(parsed.data, tenantContext);
+    const item = await createMenuItem(parsed.data, tenantContext);
+    await writeAuditLog({
+      actor: session.user,
+      organizationId: tenantContext.organizationId,
+      locationId: tenantContext.locationId,
+      action: "menu.item.create",
+      entityType: "menu_item",
+      entityId: item.id,
+      metadata: {
+        name: item.name,
+        slug: item.slug,
+        categoryId: item.categoryId,
+        isActive: item.isActive,
+        isSoldOut: item.isSoldOut,
+      },
+    });
+
     return NextResponse.json({ categories: await getAdminMenu(tenantContext) });
   } catch (error) {
     return NextResponse.json(

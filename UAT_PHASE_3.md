@@ -182,7 +182,7 @@ Expected: Success message appears.
 
 - [ ] Login with the invited order operator username/password at `http://localhost:3000/staff/login`.
 
-Expected: Order operator can access `/staff`.
+Expected: Order operator can access `/operations/orders`.
 
 - [ ] Try opening `http://localhost:3000/restaurant`.
 
@@ -190,13 +190,13 @@ Expected: Access denied or redirect because `ORDER_OPERATOR` should not manage a
 
 ### Workflow 6: Restaurant Manager Builds Menu
 
-URL: `http://localhost:3000/staff`
+URL: `http://localhost:3000/operations/orders`
 
 - [ ] Login as restaurant manager if needed.
 
-Expected: `/staff` loads.
+Expected: `/operations/orders` loads.
 
-- [ ] Open Menu Manager.
+- [ ] Confirm Menu Manager is not visible for order operator.
 
 Expected: Menu manager loads.
 
@@ -242,7 +242,7 @@ Expected: Order is placed and recent order status appears.
 
 ### Workflow 8: Order Operator Handles Order
 
-URL: `http://localhost:3000/staff`
+URL: `http://localhost:3000/operations/orders`
 
 - [ ] Login as order operator.
 
@@ -274,7 +274,7 @@ Expected: Cancelled state appears correctly.
 
 ### Workflow 9: Clear Testing Orders
 
-URL: `http://localhost:3000/staff`
+URL: `http://localhost:3000/operations/orders`
 
 - [ ] Login as restaurant manager or allowed staff.
 
@@ -300,8 +300,9 @@ Expected: Old local customer status clears/syncs after refresh.
 
 - [ ] `PLATFORM_ADMIN` can access `/platform`.
 - [ ] `COMPANY_OWNER` can access `/company`.
-- [ ] `RESTAURANT_MANAGER` can access `/restaurant` and `/staff`.
-- [ ] `ORDER_OPERATOR` can access `/staff`.
+- [ ] `RESTAURANT_MANAGER` can access `/restaurant`, `/operations/orders`, and `/operations/menu`.
+- [ ] `ORDER_OPERATOR` can access `/operations/orders`.
+- [ ] `ORDER_OPERATOR` cannot access `/operations/menu`.
 - [ ] `ORDER_OPERATOR` cannot access `/restaurant`, `/company`, or `/platform`.
 - [ ] Logged-out user cannot access admin pages.
 - [ ] Customer can access `/order` without login.
@@ -361,7 +362,7 @@ Password: PLATFORM_OWNER_PASSWORD from .env.local
 - [ ] Confirm access is blocked until a company owner/manager account is created through invite flow.
 - [ ] Open `/restaurant`.
 - [ ] Confirm access is blocked until a restaurant manager account is created through invite flow.
-- [ ] Open `/staff`.
+- [ ] Open `/operations/orders`.
 - [ ] Confirm access is blocked until a location-level staff membership is created through invite flow.
 - [ ] Open `/order`.
 - [ ] Confirm customer order page loads without login.
@@ -423,7 +424,7 @@ Route: `/restaurant`
 - [ ] Confirm success message appears.
 - [ ] Open `/staff/login`.
 - [ ] Login with the invited username and new password.
-- [ ] Confirm invited order operator can access `/staff`.
+- [ ] Confirm invited order operator can access `/operations/orders`.
 - [ ] Confirm invited order operator should not access `/restaurant` unless role allows it.
 
 ### Invalid Invite Checks
@@ -517,7 +518,7 @@ Only test this with `COMPANY_OWNER`, `COMPANY_MANAGER`, or `PLATFORM_ADMIN`.
 
 - [ ] Create invite for `ORDER_OPERATOR`.
 - [ ] Login as invited order operator.
-- [ ] Confirm access to `/staff`.
+- [ ] Confirm access to `/operations/orders`.
 - [ ] Confirm order operator does not access `/restaurant`.
 
 ### Company Reports
@@ -547,7 +548,7 @@ Use a user with memberships in more than one location.
 
 ## Menu Manager Smoke Test
 
-Route: `/staff`
+Route: `/operations/menu`
 
 - [ ] Open Menu Manager.
 - [ ] Create category.
@@ -559,7 +560,7 @@ Route: `/staff`
 
 ## Orders Smoke Test
 
-Route: `/order` and `/staff`
+Route: `/order` and `/operations/orders`
 
 - [ ] Open `/order`.
 - [ ] Enter customer name.
@@ -568,7 +569,7 @@ Route: `/order` and `/staff`
 - [ ] Add item note.
 - [ ] Review order.
 - [ ] Confirm order.
-- [ ] Open `/staff`.
+- [ ] Open `/operations/orders`.
 - [ ] Confirm order appears on active board.
 - [ ] Mark individual item preparing/ready/delivered/cancelled where available.
 - [ ] Confirm customer order status updates.
@@ -576,7 +577,7 @@ Route: `/order` and `/staff`
 
 ## Clear Orders UAT
 
-Route: `/staff`
+Route: `/operations/orders`
 
 - [ ] Click clear all orders.
 - [ ] Confirm first warning appears.
@@ -588,10 +589,10 @@ Route: `/staff`
 
 ## Security And Regression Checks
 
-- [ ] Logged-out user cannot access `/staff`, `/restaurant`, `/company`, or `/platform`.
+- [ ] Logged-out user cannot access `/operations/orders`, `/operations/menu`, `/restaurant`, `/company`, or `/platform`.
 - [ ] Customer can access `/order` without login.
 - [ ] `ORDER_OPERATOR` role cannot access `/restaurant`, `/company`, or `/platform`.
-- [ ] `RESTAURANT_MANAGER` can access `/restaurant` and `/staff`.
+- [ ] `RESTAURANT_MANAGER` can access `/restaurant`, `/operations/orders`, and `/operations/menu`.
 - [ ] `COMPANY_OWNER` or `COMPANY_MANAGER` can access `/company`.
 - [ ] `PLATFORM_ADMIN` can access `/platform`.
 - [ ] Staff from one restaurant should not see another restaurant's operational data.

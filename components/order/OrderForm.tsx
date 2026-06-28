@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   CheckIcon,
   ImageIcon,
@@ -17,25 +18,11 @@ import {
   syncCustomerOrdersResetMarker,
   writeStoredCustomerOrders,
 } from "@/lib/customer-orders";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
 import { FormField } from "@/components/shared/FormField";
 import { SectionHeader } from "@/components/shared/SectionHeader";
 import { Spinner } from "@/components/shared/Spinner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   Sheet,
@@ -44,13 +31,13 @@ import {
   SheetFooter,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { MenuCategoryRecord, MenuItemRecord } from "@/types/menu";
 
 type OrderFormProps = {
-  onOrderCreated: (order: LocalCustomerOrder) => void;
+  locationQrSlug?: string;
+  onOrderCreated?: (order: LocalCustomerOrder) => void;
 };
 
 type CartItem = {
@@ -107,7 +94,17 @@ function formatPrice(price: string | null) {
   return price ? `INR ${Number(price).toFixed(2)}` : "Price on request";
 }
 
-export function OrderForm({ onOrderCreated }: OrderFormProps) {
+function withQr(path: string, locationQrSlug?: string) {
+  if (!locationQrSlug) {
+    return path;
+  }
+
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}qr=${encodeURIComponent(locationQrSlug)}`;
+}
+
+export function OrderForm({ locationQrSlug, onOrderCreated }: OrderFormProps) {
+  const router = useRouter();
   const [menuCategories, setMenuCategories] = useState<MenuCategoryRecord[]>([]);
   const [draft, setDraft] = useState<OrderDraft>({
     customerName: "",
@@ -117,16 +114,19 @@ export function OrderForm({ onOrderCreated }: OrderFormProps) {
   const [menuError, setMenuError] = useState<string | null>(null);
   const [isLoadingMenu, setIsLoadingMenu] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
-  const [openCategoryId, setOpenCategoryId] = useState<string | undefined>(undefined);
+  const [screen, setScreen] = useState<"menu" | "review">("menu");
+  const [activeCategoryId, setActiveCategoryId] = useState<string | undefined>(undefined);
+  const [isCategoryBarStuck, setIsCategoryBarStuck] = useState(false);
+  const categoryRefs = useRef<Record<string, HTMLElement | null>>({});
+  const categoryBarSentinelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let isMounted = true;
 
     async function loadMenu() {
       setIsLoadingMenu(true);
-      const response = await fetch("/api/menu");
+      const response = await fetch(withQr("/api/menu", locationQrSlug));
       const payload = await response.json();
 
       if (!response.ok) {
@@ -142,7 +142,7 @@ export function OrderForm({ onOrderCreated }: OrderFormProps) {
         setMenuCategories(payload.categories ?? []);
         setMenuError(null);
         setIsLoadingMenu(false);
-        setOpenCategoryId(payload.categories?.[0]?.id);
+        setActiveCategoryId(payload.categories?.[0]?.id);
       }
     }
 
@@ -151,7 +151,65 @@ export function OrderForm({ onOrderCreated }: OrderFormProps) {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [locationQrSlug]);
+
+  useEffect(() => {
+    if (menuCategories.length === 0) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visibleEntry = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((left, right) => right.intersectionRatio - left.intersectionRatio)[0];
+
+        if (visibleEntry?.target.id) {
+          setActiveCategoryId(visibleEntry.target.id.replace("menu-category-", ""));
+        }
+      },
+      {
+        root: null,
+        rootMargin: "-160px 0px -55% 0px",
+        threshold: [0.12, 0.35, 0.6],
+      },
+    );
+
+    for (const category of menuCategories) {
+      const element = categoryRefs.current[category.id];
+
+      if (element) {
+        observer.observe(element);
+      }
+    }
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [menuCategories]);
+
+  useEffect(() => {
+    const sentinel = categoryBarSentinelRef.current;
+
+    if (!sentinel) {
+      return;
+    }
+
+    const observedSentinel = sentinel;
+
+    function updateStickyState() {
+      setIsCategoryBarStuck(observedSentinel.getBoundingClientRect().top <= 0);
+    }
+
+    updateStickyState();
+    window.addEventListener("scroll", updateStickyState, { passive: true });
+    window.addEventListener("resize", updateStickyState);
+
+    return () => {
+      window.removeEventListener("scroll", updateStickyState);
+      window.removeEventListener("resize", updateStickyState);
+    };
+  }, [menuCategories.length]);
 
   const totalProducts = useMemo(
     () => menuCategories.reduce((count, category) => count + category.items.length, 0),
@@ -176,6 +234,10 @@ export function OrderForm({ onOrderCreated }: OrderFormProps) {
     return hasAnyPrice ? pricedTotal.toFixed(2) : null;
   }, [cartItems]);
 
+  const customerNameError =
+    screen === "review" && error === "Please enter the customer's name." ? error : null;
+  const reviewError = screen === "review" && error !== customerNameError ? error : null;
+
   function updateDraft<K extends keyof OrderDraft>(key: K, value: OrderDraft[K]) {
     setDraft((currentDraft) => ({
       ...currentDraft,
@@ -184,6 +246,11 @@ export function OrderForm({ onOrderCreated }: OrderFormProps) {
   }
 
   function addToCart(category: MenuCategoryRecord, drink: MenuItemRecord) {
+    if (drink.isSoldOut || drink.isUnavailableDueToStock) {
+      setError(`${drink.name} is currently unavailable.`);
+      return;
+    }
+
     setCartItems((currentItems) => {
       const existingIndex = currentItems.findIndex((item) => item.drinkId === drink.id);
 
@@ -222,37 +289,35 @@ export function OrderForm({ onOrderCreated }: OrderFormProps) {
     );
   }
 
-  function validateDraft() {
-    if (draft.customerName.trim().length < 2) {
-      return "Please enter the customer's name.";
-    }
-
-    if (cartItems.length === 0) {
-      return "Add at least one drink to the cart.";
-    }
-
-    return null;
+  function scrollToCategory(categoryId: string) {
+    setActiveCategoryId(categoryId);
+    categoryRefs.current[categoryId]?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
   }
 
-  function openConfirmation(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const validationError = validateDraft();
-
-    if (validationError) {
-      setError(validationError);
-      setIsConfirmOpen(false);
+  function goToReview() {
+    if (cartItems.length === 0) {
+      setError("Add at least one drink to the cart.");
       return;
     }
 
     setError(null);
-    setIsConfirmOpen(true);
+    setIsCartOpen(false);
+    setScreen("review");
   }
 
   async function confirmOrder() {
+    if (draft.customerName.trim().length < 2) {
+      setError("Please enter the customer's name.");
+      return;
+    }
+
     setIsSubmitting(true);
     setError(null);
 
-    const response = await fetch("/api/orders", {
+    const response = await fetch(withQr("/api/orders", locationQrSlug), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -271,13 +336,13 @@ export function OrderForm({ onOrderCreated }: OrderFormProps) {
     if (!response.ok) {
       setError(getApiErrorMessage(payload));
       setIsSubmitting(false);
-      setIsConfirmOpen(false);
       return;
     }
 
     const nextOrder: LocalCustomerOrder = {
       orderId: payload.orderId,
       orderNo: payload.orderNo,
+      orderDate: payload.orderDate,
       customerToken: payload.customerToken,
       customerName: payload.customerName,
       categoryName: payload.categoryName,
@@ -292,182 +357,270 @@ export function OrderForm({ onOrderCreated }: OrderFormProps) {
     const existingOrders = readStoredCustomerOrders();
     writeStoredCustomerOrders([nextOrder, ...existingOrders]);
 
-    onOrderCreated(nextOrder);
+    onOrderCreated?.(nextOrder);
     toast.success(`Order #${payload.orderNo} placed successfully.`);
     setDraft({ customerName: "" });
     setCartItems([]);
     setIsCartOpen(false);
     setIsSubmitting(false);
-    setIsConfirmOpen(false);
+    setScreen("menu");
+    router.push(withQr("/order/status", locationQrSlug));
   }
 
   return (
     <>
-      <Card className="rounded-xl border-white/60 bg-white/88 shadow-[0_20px_60px_rgba(40,26,20,0.08)]">
+      <Sheet open={isCartOpen} onOpenChange={setIsCartOpen}>
+        <SheetContent side="right">
+          <SheetHeader>
+            <SheetTitle>Your cart</SheetTitle>
+            <SheetDescription>
+              Adjust quantities and add notes for each item before reviewing the order.
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="flex-1 overflow-y-auto px-6 py-5">
+            {cartItems.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-stone-200 bg-stone-50 px-4 py-8 text-center">
+                <p className="text-sm font-medium text-stone-900">Your cart is empty</p>
+                <p className="mt-2 text-sm text-stone-500">
+                  Add drinks from the menu cards to start building the order.
+                </p>
+              </div>
+            ) : (
+              <div className="grid gap-4">
+                {cartItems.map((item) => (
+                  <div key={item.drinkId} className="rounded-xl border border-stone-200 bg-white p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-base font-semibold text-stone-950">{item.drinkName}</p>
+                        <p className="text-sm text-stone-500">{item.categoryName}</p>
+                        <p className="mt-1 text-sm font-semibold text-stone-900">
+                          {formatPrice(item.unitPrice)}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => updateCartItem(item.drinkId, () => null)}
+                        className="rounded-lg text-stone-500 hover:bg-stone-100 hover:text-stone-900"
+                      >
+                        <Trash2Icon className="size-4" />
+                        Remove
+                      </Button>
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap items-center gap-3">
+                      <div className="inline-flex items-center overflow-hidden rounded-lg border border-stone-200">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() =>
+                            updateCartItem(item.drinkId, (current) =>
+                              current.quantity <= 1
+                                ? null
+                                : { ...current, quantity: current.quantity - 1 },
+                            )
+                          }
+                          className="rounded-none"
+                        >
+                          <MinusIcon className="size-4" />
+                        </Button>
+                        <span className="min-w-12 px-4 text-center text-sm font-semibold text-stone-950">
+                          {item.quantity}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() =>
+                            updateCartItem(item.drinkId, (current) => ({
+                              ...current,
+                              quantity: Math.min(current.quantity + 1, 20),
+                            }))
+                          }
+                          className="rounded-none"
+                        >
+                          <PlusIcon className="size-4" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="mt-4">
+                      <FormField label="Notes for this item">
+                        <Textarea
+                          value={item.notes}
+                          onChange={(event) =>
+                            updateCartItem(item.drinkId, (current) => ({
+                              ...current,
+                              notes: event.target.value,
+                            }))
+                          }
+                          rows={2}
+                          placeholder="Less ice, no garnish, serve later..."
+                        />
+                      </FormField>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <SheetFooter>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm text-stone-500">{totalQuantity} item(s)</p>
+                <p className="text-base font-semibold text-stone-950">
+                  {totalAmount ? `INR ${totalAmount}` : "Price on request"}
+                </p>
+              </div>
+              <Button
+                type="button"
+                onClick={goToReview}
+                disabled={isSubmitting || isLoadingMenu || Boolean(menuError) || cartItems.length === 0}
+                className="min-h-12 rounded-lg bg-stone-950 px-5 py-3 text-white hover:bg-stone-800"
+              >
+                Review Order
+              </Button>
+            </div>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      {screen === "review" ? (
+        <Card className="overflow-hidden rounded-xl border-white/60 bg-white/88 shadow-[0_20px_60px_rgba(40,26,20,0.08)]">
+          <CardHeader className="px-6 pt-6">
+            <SectionHeader
+              eyebrow="Review order"
+              title="Confirm order"
+              meta={
+                <p className="text-sm text-stone-600">
+                  Add the customer name and double-check the cart before sending it to the bar queue.
+                </p>
+              }
+              className="mb-0"
+            />
+          </CardHeader>
+
+          <CardContent className="grid gap-4 px-6 pb-6">
+            <FormField label="Customer name" htmlFor="review-customer-name">
+              <Input
+                id="review-customer-name"
+                value={draft.customerName}
+                onChange={(event) => {
+                  updateDraft("customerName", event.target.value);
+
+                  if (customerNameError && event.target.value.trim().length >= 2) {
+                    setError(null);
+                  }
+                }}
+                placeholder="Enter customer name"
+                disabled={isSubmitting}
+                aria-invalid={Boolean(customerNameError)}
+                aria-describedby={customerNameError ? "review-customer-name-error" : undefined}
+                className="h-12 rounded-xl border-stone-200 bg-white px-4 text-base aria-invalid:border-rose-500 aria-invalid:ring-2 aria-invalid:ring-rose-100"
+              />
+              {customerNameError ? (
+                <p id="review-customer-name-error" className="text-sm text-rose-600">
+                  {customerNameError}
+                </p>
+              ) : null}
+            </FormField>
+
+            {reviewError ? <p className="text-sm text-rose-600">{reviewError}</p> : null}
+
+            <div className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between gap-4">
+                <p className="text-sm font-semibold text-stone-950">Order summary</p>
+                <p className="text-xs font-medium uppercase tracking-[0.14em] text-stone-400">
+                  {totalQuantity} item(s)
+                </p>
+              </div>
+
+              <div className="mt-4 grid gap-3">
+                {cartItems.map((item) => (
+                  <div key={item.drinkId} className="grid grid-cols-[1fr_auto] gap-3 text-sm">
+                    <div className="min-w-0">
+                      <p className="font-medium text-stone-900">
+                        {item.drinkName} x{item.quantity}
+                      </p>
+                      <p className="text-stone-500">{item.categoryName}</p>
+                      {item.notes.trim() ? (
+                        <p className="mt-1 text-xs text-stone-500">Note: {item.notes.trim()}</p>
+                      ) : null}
+                    </div>
+                    <p className="font-medium text-stone-900">
+                      {item.unitPrice ? `INR ${(Number(item.unitPrice) * item.quantity).toFixed(2)}` : "-"}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="my-4 border-t border-dashed border-stone-200" />
+
+              <div className="grid gap-2 text-sm">
+                <div className="flex items-center justify-between gap-4 text-stone-600">
+                  <span>Items</span>
+                  <span>{totalQuantity}</span>
+                </div>
+                <div className="flex items-center justify-between gap-4 text-stone-600">
+                  <span>Pricing</span>
+                  <span>{totalAmount ? "Calculated" : "Price on request"}</span>
+                </div>
+                <div className="flex items-center justify-between gap-4 border-t border-stone-100 pt-3 font-semibold text-stone-950">
+                  <span>To Pay</span>
+                  <span>{totalAmount ? `INR ${totalAmount}` : "Price on request"}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-3 border-t border-stone-200 pt-4 sm:grid-cols-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setError(null);
+                  setScreen("menu");
+                }}
+                disabled={isSubmitting}
+                className="min-h-12 rounded-lg py-3"
+              >
+                Back to Menu
+              </Button>
+              <Button
+                type="button"
+                onClick={confirmOrder}
+                disabled={isSubmitting || cartItems.length === 0}
+                className="min-h-12 rounded-lg bg-stone-950 py-3 text-white hover:bg-stone-800"
+              >
+                {isSubmitting ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Spinner className="text-white" />
+                    Placing Order...
+                  </span>
+                ) : (
+                  "Confirm Order"
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+      <Card className="overflow-visible rounded-xl border-white/60 bg-white/88 shadow-[0_20px_60px_rgba(40,26,20,0.08)]">
         <CardHeader className="px-6 pt-6">
           <SectionHeader
             eyebrow="Place an order"
             title="Pick Your Next Pour"
             meta={
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm text-stone-600">
-                  Build the order from the menu, then review everything in the cart drawer.
-                </p>
-                <Sheet open={isCartOpen} onOpenChange={setIsCartOpen}>
-                  <SheetTrigger asChild>
-                    <Button
-                      type="button"
-                      variant={cartItems.length > 0 ? "default" : "outline"}
-                      className={
-                        cartItems.length > 0
-                          ? "rounded-lg bg-stone-950 text-white hover:bg-stone-800"
-                          : "rounded-lg border-stone-300 bg-white text-stone-700 hover:bg-stone-100"
-                      }
-                    >
-                      <ShoppingCartIcon className="size-4" />
-                      Cart ({totalQuantity})
-                    </Button>
-                  </SheetTrigger>
-                  <SheetContent side="right">
-                    <SheetHeader>
-                      <SheetTitle>Your cart</SheetTitle>
-                      <SheetDescription>
-                        Adjust quantities and add notes for each item before placing the order.
-                      </SheetDescription>
-                    </SheetHeader>
-
-                    <div className="flex-1 overflow-y-auto px-6 py-5">
-                      {cartItems.length === 0 ? (
-                        <div className="rounded-xl border border-dashed border-stone-200 bg-stone-50 px-4 py-8 text-center">
-                          <p className="text-sm font-medium text-stone-900">Your cart is empty</p>
-                          <p className="mt-2 text-sm text-stone-500">
-                            Add drinks from the menu cards to start building the order.
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="grid gap-4">
-                          {cartItems.map((item) => (
-                            <div key={item.drinkId} className="rounded-xl border border-stone-200 bg-white p-4">
-                              <div className="flex flex-wrap items-start justify-between gap-3">
-                                <div>
-                                  <p className="text-base font-semibold text-stone-950">{item.drinkName}</p>
-                                  <p className="text-sm text-stone-500">{item.categoryName}</p>
-                                  <p className="mt-1 text-sm font-semibold text-stone-900">
-                                    {formatPrice(item.unitPrice)}
-                                  </p>
-                                </div>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  onClick={() => updateCartItem(item.drinkId, () => null)}
-                                  className="rounded-lg text-stone-500 hover:bg-stone-100 hover:text-stone-900"
-                                >
-                                  <Trash2Icon className="size-4" />
-                                  Remove
-                                </Button>
-                              </div>
-
-                              <div className="mt-4 flex flex-wrap items-center gap-3">
-                                <div className="inline-flex items-center overflow-hidden rounded-lg border border-stone-200">
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    onClick={() =>
-                                      updateCartItem(item.drinkId, (current) =>
-                                        current.quantity <= 1
-                                          ? null
-                                          : { ...current, quantity: current.quantity - 1 },
-                                      )
-                                    }
-                                    className="rounded-none"
-                                  >
-                                    <MinusIcon className="size-4" />
-                                  </Button>
-                                  <span className="min-w-12 px-4 text-center text-sm font-semibold text-stone-950">
-                                    {item.quantity}
-                                  </span>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    onClick={() =>
-                                      updateCartItem(item.drinkId, (current) => ({
-                                        ...current,
-                                        quantity: Math.min(current.quantity + 1, 20),
-                                      }))
-                                    }
-                                    className="rounded-none"
-                                  >
-                                    <PlusIcon className="size-4" />
-                                  </Button>
-                                </div>
-                              </div>
-
-                              <div className="mt-4">
-                                <FormField label="Notes for this item">
-                                  <Textarea
-                                    value={item.notes}
-                                    onChange={(event) =>
-                                      updateCartItem(item.drinkId, (current) => ({
-                                        ...current,
-                                        notes: event.target.value,
-                                      }))
-                                    }
-                                    rows={2}
-                                    placeholder="Less ice, no garnish, serve later..."
-                                  />
-                                </FormField>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <SheetFooter>
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <p className="text-sm text-stone-500">{totalQuantity} item(s)</p>
-                          <p className="text-base font-semibold text-stone-950">
-                            {totalAmount ? `INR ${totalAmount}` : "Price on request"}
-                          </p>
-                        </div>
-                        <Button
-                          type="button"
-                          onClick={() => {
-                            setIsCartOpen(false);
-                            setTimeout(() => {
-                              const form = document.getElementById("customer-order-form") as HTMLFormElement | null;
-                              form?.requestSubmit();
-                            }, 0);
-                          }}
-                          disabled={isSubmitting || isLoadingMenu || Boolean(menuError) || cartItems.length === 0}
-                          className="rounded-lg bg-stone-950 text-white hover:bg-stone-800"
-                        >
-                          Review Order
-                        </Button>
-                      </div>
-                    </SheetFooter>
-                  </SheetContent>
-                </Sheet>
-              </div>
+              <p className="text-sm text-stone-600">
+                Build the order from the menu, then review everything in the cart drawer.
+              </p>
             }
             className="mb-0"
           />
         </CardHeader>
 
-        <CardContent className="px-6 pb-24 md:pb-6">
-          <form id="customer-order-form" onSubmit={openConfirmation} className="grid gap-5">
-            <FormField label="Customer name" htmlFor="customer-name">
-              <Input
-                id="customer-name"
-                value={draft.customerName}
-                onChange={(event) => updateDraft("customerName", event.target.value)}
-                placeholder="Enter customer name"
-                disabled={isSubmitting}
-                className="h-12 rounded-xl border-stone-200 bg-white px-4 text-base"
-              />
-            </FormField>
-
+        <CardContent className="px-6 pb-6">
+          <div className="grid gap-5">
             <div className="grid gap-3">
               <div className="flex flex-wrap items-end justify-between gap-2">
                 <div>
@@ -484,20 +637,21 @@ export function OrderForm({ onOrderCreated }: OrderFormProps) {
               {isLoadingMenu ? (
                 <div className="grid gap-4">
                   {Array.from({ length: 2 }).map((_, index) => (
-                    <div key={index} className="rounded-xl border border-stone-200 bg-stone-50 p-4">
+                    <div key={index} className="rounded-xl border border-stone-200 bg-white p-4">
                       <div className="h-5 w-32 animate-pulse rounded-md bg-stone-200" />
-                      <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-4">
+                      <div className="mt-4 grid gap-4">
                         {Array.from({ length: 4 }).map((__, cardIndex) => (
                           <div
                             key={cardIndex}
-                            className="overflow-hidden rounded-xl border border-stone-200 bg-white"
+                            className="grid grid-cols-[1fr_92px] gap-4 border-b border-stone-100 pb-4 last:border-b-0"
                           >
-                            <div className="aspect-square animate-pulse bg-stone-100" />
-                            <div className="space-y-2 p-3">
+                            <div className="space-y-2">
                               <div className="h-4 w-3/4 animate-pulse rounded-md bg-stone-200" />
                               <div className="h-3 w-full animate-pulse rounded-md bg-stone-100" />
-                              <div className="h-9 w-full animate-pulse rounded-lg bg-stone-100" />
+                              <div className="h-3 w-2/3 animate-pulse rounded-md bg-stone-100" />
+                              <div className="h-8 w-24 animate-pulse rounded-lg bg-stone-100" />
                             </div>
+                            <div className="aspect-square animate-pulse rounded-lg bg-stone-100" />
                           </div>
                         ))}
                       </div>
@@ -505,287 +659,182 @@ export function OrderForm({ onOrderCreated }: OrderFormProps) {
                   ))}
                 </div>
               ) : (
-                <Accordion
-                  type="single"
-                  collapsible
-                  value={openCategoryId}
-                  onValueChange={(value) => setOpenCategoryId(value || undefined)}
-                  className="grid gap-3"
-                >
+                <div className="grid gap-6">
+                  {menuCategories.length > 0 ? (
+                    <>
+                    <div ref={categoryBarSentinelRef} className="h-px" />
+                    <div
+                      className={`sticky top-0 z-20 overflow-x-auto border-y border-stone-200 px-4 py-3 shadow-sm backdrop-blur transition-[margin,padding,background-color] duration-200 ${
+                        isCategoryBarStuck
+                          ? "-mx-6 bg-white/70 px-6"
+                          : "bg-white/95"
+                      }`}
+                    >
+                      <div className="flex min-w-max gap-2">
+                        {menuCategories.map((category) => (
+                          <Button
+                            key={category.id}
+                            type="button"
+                            variant={activeCategoryId === category.id ? "default" : "outline"}
+                            onClick={() => scrollToCategory(category.id)}
+                            className={
+                              activeCategoryId === category.id
+                                ? "h-9 rounded-lg bg-stone-950 px-4 text-sm text-white hover:bg-stone-800"
+                                : "h-9 rounded-lg border-stone-300 bg-white px-4 text-sm text-stone-700 hover:bg-stone-100"
+                            }
+                          >
+                            {category.name}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                    </>
+                  ) : null}
+
                   {menuCategories.map((category) => (
-                    <AccordionItem key={category.id} value={category.id} className="overflow-hidden rounded-xl">
-                      <AccordionTrigger>
-                        <div className="min-w-0">
-                          <p className="text-base font-semibold text-stone-950">{category.name}</p>
-                          <p className="mt-1 text-xs uppercase tracking-[0.16em] text-stone-400">
-                            {category.items.length} options
-                          </p>
-                        </div>
-                      </AccordionTrigger>
-                      <AccordionContent>
+                    <section
+                      key={category.id}
+                      id={`menu-category-${category.id}`}
+                      ref={(element) => {
+                        categoryRefs.current[category.id] = element;
+                      }}
+                      className="scroll-mt-28 rounded-xl border border-stone-200 bg-white p-4"
+                    >
+                      <div className="mb-4">
+                        <p className="text-xl font-semibold text-stone-950">{category.name}</p>
+                        <p className="mt-1 text-xs uppercase tracking-[0.16em] text-stone-400">
+                          {category.items.length} options
+                        </p>
                         {category.description ? (
-                          <p className="mb-4 text-sm text-stone-600">{category.description}</p>
+                          <p className="mt-2 text-sm text-stone-600">{category.description}</p>
                         ) : null}
+                      </div>
 
-                        {category.items.length === 0 ? (
-                          <p className="text-sm text-stone-500">No drinks in this category yet.</p>
-                        ) : (
-                          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-4">
-                            {category.items.map((drink) => {
-                              const cartItem = cartItems.find((item) => item.drinkId === drink.id);
+                      {category.items.length === 0 ? (
+                        <p className="text-sm text-stone-500">No drinks in this category yet.</p>
+                      ) : (
+                        <div className="grid gap-4">
+                          {category.items.map((drink) => {
+                            const cartItem = cartItems.find((item) => item.drinkId === drink.id);
+                            const isUnavailable =
+                              drink.isSoldOut || drink.isUnavailableDueToStock;
+                            const unavailableLabel = drink.isSoldOut
+                              ? "Sold out"
+                              : drink.isUnavailableDueToStock
+                                ? "Out of stock"
+                                : null;
 
-                              return (
-                                <div
-                                  key={drink.id}
-                                  className={`flex h-full flex-col overflow-hidden rounded-xl border transition ${
-                                    cartItem
-                                      ? "border-amber-500 bg-amber-50/50 ring-2 ring-amber-200"
-                                      : "border-stone-200 bg-white hover:border-stone-300 hover:bg-stone-50"
-                                  }`}
-                                >
-                                  <div className="relative aspect-square overflow-hidden bg-stone-100">
-                                    {drink.imageUrl ? (
-                                      // eslint-disable-next-line @next/next/no-img-element
-                                      <img
-                                        src={drink.imageUrl}
-                                        alt={drink.name}
-                                        className="h-full w-full object-cover"
-                                      />
-                                    ) : (
-                                      <div className="flex h-full items-center justify-center text-stone-300">
-                                        <ImageIcon className="size-8" />
-                                      </div>
-                                    )}
+                            return (
+                              <div
+                                key={drink.id}
+                                className={`grid grid-cols-[1fr_96px] gap-4 border-b border-stone-100 pb-4 last:border-b-0 sm:grid-cols-[1fr_128px] ${
+                                  cartItem ? "rounded-lg bg-emerald-50/70 p-3 ring-1 ring-emerald-200" : ""
+                                }`}
+                              >
+                                <div className="min-w-0">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <p className="text-base font-semibold leading-snug text-stone-950">
+                                      {drink.name}
+                                    </p>
                                     {cartItem ? (
-                                      <span className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-md bg-stone-950 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-white">
+                                      <span className="inline-flex items-center gap-1 rounded-md bg-stone-950 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-white">
                                         <CheckIcon className="size-3" />
                                         x{cartItem.quantity}
                                       </span>
                                     ) : null}
+                                    {unavailableLabel ? (
+                                      <span className="rounded-md bg-rose-600 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-white">
+                                        {unavailableLabel}
+                                      </span>
+                                    ) : null}
+                                    {drink.inventoryStatus === "low" ? (
+                                      <span className="rounded-md bg-amber-100 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-900">
+                                        Low stock
+                                      </span>
+                                    ) : null}
                                   </div>
-
-                                  <div className="flex flex-1 flex-col p-3">
-                                    <div>
-                                      <p className="line-clamp-2 min-h-10 text-sm font-semibold text-stone-950 sm:text-base">
-                                        {drink.name}
-                                      </p>
-                                      <p className="mt-1 line-clamp-2 min-h-8 text-xs text-stone-500 sm:text-sm">
-                                        {drink.description || "Freshly prepared at the bar."}
-                                      </p>
-                                    </div>
-
-                                    <div className="mt-auto flex flex-col gap-2 pt-3 sm:flex-row sm:items-end sm:justify-between">
-                                      <p className="text-sm font-semibold text-stone-950">
-                                        {formatPrice(drink.price ?? null)}
-                                      </p>
-                                      <Button
-                                        type="button"
-                                        variant={cartItem ? "default" : "outline"}
-                                        onClick={() => addToCart(category, drink)}
-                                        disabled={isSubmitting}
-                                        className={
-                                          cartItem
-                                            ? "w-full rounded-lg bg-stone-950 text-white hover:bg-stone-800 sm:w-auto"
-                                            : "w-full rounded-lg border-stone-300 bg-white text-stone-700 hover:bg-stone-100 sm:w-auto"
-                                        }
-                                      >
-                                        <PlusIcon className="size-4" />
-                                        {cartItem ? "Add More" : "Add"}
-                                      </Button>
-                                    </div>
-                                  </div>
+                                  <p className="mt-1 line-clamp-2 text-sm text-stone-500">
+                                    {drink.description || "Freshly prepared at the bar."}
+                                  </p>
+                                  <p className="mt-3 text-sm font-semibold text-stone-950">
+                                    {formatPrice(drink.price ?? null)}
+                                  </p>
+                                  <Button
+                                    type="button"
+                                    variant={cartItem ? "default" : "outline"}
+                                    onClick={() => addToCart(category, drink)}
+                                    disabled={isSubmitting || isUnavailable}
+                                    className={
+                                      isUnavailable
+                                        ? "mt-3 h-9 rounded-lg border-stone-300 bg-stone-100 px-4 text-stone-400"
+                                        : cartItem
+                                        ? "mt-3 h-9 rounded-lg bg-stone-950 px-4 text-white hover:bg-stone-800"
+                                        : "mt-3 h-9 rounded-lg border-stone-300 bg-white px-4 text-stone-700 hover:bg-stone-100"
+                                    }
+                                  >
+                                    {!isUnavailable ? <PlusIcon className="size-4" /> : null}
+                                    {isUnavailable ? unavailableLabel : cartItem ? "Add More" : "Add"}
+                                  </Button>
                                 </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </AccordionContent>
-                    </AccordionItem>
+
+                                <div className="relative aspect-square overflow-hidden rounded-lg bg-stone-100">
+                                  {drink.imageUrl ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                      src={drink.imageUrl}
+                                      alt={drink.name}
+                                      className="h-full w-full object-cover"
+                                    />
+                                  ) : (
+                                    <div className="flex h-full items-center justify-center text-stone-300">
+                                      <ImageIcon className="size-7" />
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </section>
                   ))}
-                </Accordion>
-              )}
-            </div>
-
-            <div className="rounded-xl border border-stone-200 bg-stone-50/80 p-4">
-              <div className="flex flex-wrap items-end justify-between gap-2">
-                <div>
-                  <p className="text-sm font-semibold text-stone-950">Cart summary</p>
-                  <p className="mt-1 text-sm text-stone-500">
-                    Open the cart drawer to edit quantities and notes.
-                  </p>
-                </div>
-                <p className="text-xs font-medium uppercase tracking-[0.18em] text-stone-400">
-                  {totalQuantity} items selected
-                </p>
-              </div>
-
-              {cartItems.length === 0 ? (
-                <p className="mt-4 text-sm text-stone-500">
-                  Your cart is empty. Add a drink card to begin.
-                </p>
-              ) : (
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                  <div className="grid gap-1">
-                    <p className="text-sm font-semibold text-stone-950">
-                      {cartItems[0].drinkName}
-                      {cartItems.length > 1 ? ` + ${cartItems.length - 1} more` : ""}
-                    </p>
-                    <p className="text-sm text-stone-500">
-                      {totalAmount ? `Estimated total: INR ${totalAmount}` : "Some items are priced on request"}
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setIsCartOpen(true)}
-                    className="rounded-lg border-stone-300 bg-white text-stone-700 hover:bg-stone-100"
-                  >
-                    <ShoppingCartIcon className="size-4" />
-                    Open Cart
-                  </Button>
                 </div>
               )}
             </div>
 
             {menuError ? <p className="text-sm text-rose-600">{menuError}</p> : null}
             {error ? <p className="text-sm text-rose-600">{error}</p> : null}
-
-            <Button
-              type="submit"
-              disabled={isSubmitting || isLoadingMenu || Boolean(menuError)}
-              size="lg"
-              className="mt-1 h-12 rounded-lg bg-stone-950 text-sm font-semibold text-white hover:bg-stone-800"
-            >
-              {isSubmitting ? (
-                <span className="inline-flex items-center gap-2">
-                  <Spinner className="text-white" />
-                  Preparing...
-                </span>
-              ) : (
-                "Review Order"
-              )}
-            </Button>
-
-            <p className="text-center text-base font-semibold text-amber-700">
-              Ask Mackanzie for other spirits with mixers or not.
-            </p>
-          </form>
+          </div>
         </CardContent>
       </Card>
+      )}
 
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-stone-200 bg-white/95 px-4 py-3 shadow-[0_-10px_30px_rgba(40,26,20,0.08)] backdrop-blur sm:hidden">
-        <div className="mx-auto flex max-w-6xl items-center gap-3">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setIsCartOpen(true)}
-            className="h-12 min-w-0 flex-1 rounded-lg border-stone-300 bg-white text-stone-800 hover:bg-stone-100"
-          >
-            <ShoppingCartIcon className="size-4" />
-            <span className="truncate">
-              {cartItems.length > 0 ? `Cart (${totalQuantity})` : "Open Cart"}
-            </span>
-          </Button>
-          <Button
-            type="button"
-            onClick={() => {
-              const form = document.getElementById("customer-order-form") as HTMLFormElement | null;
-              form?.requestSubmit();
-            }}
-            disabled={isSubmitting || isLoadingMenu || Boolean(menuError) || cartItems.length === 0}
-            className="h-12 min-w-0 flex-[1.2] rounded-lg bg-stone-950 text-white hover:bg-stone-800"
-          >
-            <span className="truncate">
-              {cartItems.length > 0
-                ? totalAmount
-                  ? `Review • INR ${totalAmount}`
-                  : `Review • ${totalQuantity} item(s)`
-                : "Review Order"}
-            </span>
-          </Button>
-        </div>
-      </div>
-
-      <Dialog open={isConfirmOpen} onOpenChange={setIsConfirmOpen}>
-        <DialogContent className="max-w-2xl rounded-xl border border-white/70 bg-white p-0">
-          <DialogHeader className="px-6 pt-6">
-            <DialogTitle className="text-2xl text-stone-950">Confirm order</DialogTitle>
-            <DialogDescription className="text-sm text-stone-600">
-              Double-check the full cart before sending it to the bar queue.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="grid gap-4 px-6 pb-2">
-            <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <p className="text-sm text-stone-500">Customer</p>
-                  <p className="font-semibold text-stone-900">{draft.customerName.trim()}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm text-stone-500">Items</p>
-                  <p className="font-semibold text-stone-900">{totalQuantity}</p>
-                </div>
-              </div>
+      {screen === "menu" && cartItems.length > 0 ? (
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-stone-200 bg-white/95 px-4 py-3 shadow-[0_-10px_30px_rgba(40,26,20,0.08)] backdrop-blur">
+          <div className="mx-auto flex max-w-6xl items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-stone-950">
+                {totalQuantity} item(s) selected
+              </p>
+              <p className="truncate text-xs text-stone-500">
+                {cartItems[0].drinkName}
+                {cartItems.length > 1 ? ` + ${cartItems.length - 1} more` : ""}
+                {" • "}
+                {totalAmount ? `INR ${totalAmount}` : "Price on request"}
+              </p>
             </div>
-
-            <div className="grid gap-3">
-              {cartItems.map((item) => (
-                <div key={item.drinkId} className="rounded-xl border border-stone-200 bg-white p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="font-semibold text-stone-950">
-                        {item.drinkName} x{item.quantity}
-                      </p>
-                      <p className="text-sm text-stone-500">{item.categoryName}</p>
-                      {item.notes.trim() ? (
-                        <p className="mt-2 text-sm text-stone-600">Note: {item.notes.trim()}</p>
-                      ) : null}
-                    </div>
-                    <p className="text-sm font-semibold text-stone-900">
-                      {item.unitPrice ? `INR ${(Number(item.unitPrice) * item.quantity).toFixed(2)}` : "-"}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {totalAmount ? (
-              <div className="flex items-center justify-between rounded-xl border border-stone-200 bg-stone-50 px-4 py-3">
-                <p className="text-sm text-stone-500">Estimated total</p>
-                <p className="text-base font-semibold text-stone-950">INR {totalAmount}</p>
-              </div>
-            ) : null}
+            <Button
+              type="button"
+              onClick={() => setIsCartOpen(true)}
+              disabled={isSubmitting || isLoadingMenu || Boolean(menuError)}
+              className="h-12 shrink-0 rounded-lg bg-stone-950 px-5 text-white hover:bg-stone-800"
+            >
+              <ShoppingCartIcon className="size-4" />
+              View Cart
+            </Button>
           </div>
-
-          <DialogFooter className="border-stone-200 bg-stone-50/80">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setIsConfirmOpen(false)}
-              disabled={isSubmitting}
-              className="rounded-lg"
-            >
-              Back
-            </Button>
-            <Button
-              type="button"
-              onClick={confirmOrder}
-              disabled={isSubmitting}
-              className="rounded-lg bg-stone-950 text-white hover:bg-stone-800"
-            >
-              {isSubmitting ? (
-                <span className="inline-flex items-center gap-2">
-                  <Spinner className="text-white" />
-                  Placing Order...
-                </span>
-              ) : (
-                "Confirm Order"
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
+      ) : null}
     </>
   );
 }

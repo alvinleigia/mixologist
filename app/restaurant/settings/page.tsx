@@ -17,7 +17,11 @@ export default async function RestaurantSettingsPage() {
       eyebrow="Restaurant"
       title="Restaurant settings"
       description="Edit the current restaurant profile in a focused setup screen."
-      user={{ name: session.user.name, role: session.user.role }}
+      user={{
+        name: session.user.name,
+        organizationId: session.user.organizationId,
+        role: session.user.role,
+      }}
     >
       <TenantRestaurantSettingsForm organization={snapshot.organization} />
     </SaasAdminShell>

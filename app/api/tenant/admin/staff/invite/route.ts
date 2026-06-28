@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 
 import { requireRole } from "@/lib/auth";
+import { writeAuditLog } from "@/lib/audit-log";
 import { createRestaurantAdminStaffInvitation } from "@/lib/invitations";
 import { restaurantAdminRoles } from "@/lib/role-access";
 import { getTenantAdminSnapshot } from "@/lib/tenant-admin";
@@ -22,6 +23,21 @@ export async function POST(request: Request) {
       await request.json(),
       origin,
     );
+
+    await writeAuditLog({
+      actor: session.user,
+      organizationId: tenantContext.organizationId,
+      locationId: tenantContext.locationId,
+      action: "restaurant.staff.invite",
+      entityType: "staff_invitation",
+      entityId: invitation.invitation.id,
+      metadata: {
+        userId: invitation.user.id,
+        membershipId: invitation.membership.id,
+        role: invitation.membership.role,
+        username: invitation.user.username,
+      },
+    });
 
     return NextResponse.json({
       ...(await getTenantAdminSnapshot(tenantContext)),

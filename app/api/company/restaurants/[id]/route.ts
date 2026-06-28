@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 
 import { requireRole } from "@/lib/auth";
+import { writeAuditLog } from "@/lib/audit-log";
 import { companyAdminRoles } from "@/lib/role-access";
 import { listCompanyRestaurants, updateChildRestaurantAdmin } from "@/lib/saas-admin";
 
@@ -23,6 +24,20 @@ export async function PATCH(request: Request, props: { params: Promise<{ id: str
     if (!restaurant) {
       return NextResponse.json({ error: "Restaurant not found." }, { status: 404 });
     }
+
+    await writeAuditLog({
+      actor: session.user,
+      organizationId: restaurant.id,
+      action: "company.restaurant.update",
+      entityType: "organization",
+      entityId: restaurant.id,
+      metadata: {
+        companyOrganizationId: session.user.organizationId,
+        name: restaurant.name,
+        slug: restaurant.slug,
+        isActive: restaurant.isActive,
+      },
+    });
 
     return NextResponse.json({
       restaurants: await listCompanyRestaurants(session.user.organizationId),

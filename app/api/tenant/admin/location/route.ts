@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ZodError } from "zod";
 
 import { requireRole } from "@/lib/auth";
+import { writeAuditLog } from "@/lib/audit-log";
 import { getTenantAdminSnapshot, updateLocationSettings } from "@/lib/tenant-admin";
 import { getCurrentTenantContext } from "@/lib/tenant-context";
 
@@ -26,6 +27,22 @@ export async function PATCH(request: NextRequest) {
     if (!location) {
       return NextResponse.json({ error: "Location not found." }, { status: 404 });
     }
+
+    await writeAuditLog({
+      actor: session.user,
+      organizationId: tenantContext.organizationId,
+      locationId: location.id,
+      action: "restaurant.location.update",
+      entityType: "location",
+      entityId: location.id,
+      metadata: {
+        name: location.name,
+        label: location.label,
+        qrSlug: location.qrSlug,
+        timezone: location.timezone,
+        isActive: location.isActive,
+      },
+    });
 
     return NextResponse.json(await getTenantAdminSnapshot(tenantContext));
   } catch (error) {

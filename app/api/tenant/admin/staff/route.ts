@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ZodError } from "zod";
 
 import { requireRole } from "@/lib/auth";
+import { writeAuditLog } from "@/lib/audit-log";
 import { createStaffUser, getTenantAdminSnapshot } from "@/lib/tenant-admin";
 import { getCurrentTenantContext } from "@/lib/tenant-context";
 
@@ -21,7 +22,22 @@ export async function POST(request: NextRequest) {
     }
 
     const tenantContext = await getCurrentTenantContext();
-    await createStaffUser(tenantContext, await request.json());
+    const staff = await createStaffUser(tenantContext, await request.json());
+    await writeAuditLog({
+      actor: session.user,
+      organizationId: tenantContext.organizationId,
+      locationId: tenantContext.locationId,
+      action: "restaurant.staff.create",
+      entityType: "membership",
+      entityId: staff.membership.id,
+      metadata: {
+        userId: staff.user.id,
+        username: staff.user.username,
+        role: staff.membership.role,
+        isActive: staff.membership.isActive,
+      },
+    });
+
     return NextResponse.json(await getTenantAdminSnapshot(tenantContext));
   } catch (error) {
     if (error instanceof ZodError) {

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 
 import { requireRole } from "@/lib/auth";
+import { writeAuditLog } from "@/lib/audit-log";
 import { companyAdminRoles } from "@/lib/role-access";
 import { createChildRestaurant, listCompanyRestaurants } from "@/lib/saas-admin";
 
@@ -25,7 +26,25 @@ export async function POST(request: Request) {
   }
 
   try {
-    await createChildRestaurant(session.user.organizationId, await request.json());
+    const restaurant = await createChildRestaurant(
+      session.user.organizationId,
+      await request.json(),
+    );
+    await writeAuditLog({
+      actor: session.user,
+      organizationId: restaurant.id,
+      locationId: restaurant.primaryLocation.id,
+      action: "company.restaurant.create",
+      entityType: "organization",
+      entityId: restaurant.id,
+      metadata: {
+        companyOrganizationId: session.user.organizationId,
+        name: restaurant.name,
+        slug: restaurant.slug,
+        primaryLocationId: restaurant.primaryLocation.id,
+      },
+    });
+
     return NextResponse.json({
       restaurants: await listCompanyRestaurants(session.user.organizationId),
     });

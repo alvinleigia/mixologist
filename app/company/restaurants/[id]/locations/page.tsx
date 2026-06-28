@@ -32,7 +32,11 @@ export default async function CompanyRestaurantLocationsPage(
       eyebrow="Company"
       title={`${restaurant.name} locations`}
       description="Manage branches, counters and service points for this restaurant."
-      user={{ name: session.user.name, role: session.user.role }}
+      user={{
+        name: session.user.name,
+        organizationId: session.user.organizationId,
+        role: session.user.role,
+      }}
     >
       <RestaurantLocationsPanel
         locations={restaurant.locations ?? []}

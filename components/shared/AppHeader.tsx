@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { signOut } from "next-auth/react";
-import { ChevronDownIcon, LogOutIcon } from "lucide-react";
+import { ChevronDownIcon, ClipboardListIcon, LogOutIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -31,6 +31,10 @@ type NavigationItem = {
 type AppHeaderProps = {
   activePath?: string;
   className?: string;
+  customerMenu?: {
+    orderHref?: string;
+    ordersHref?: string;
+  };
   navigationItems?: NavigationItem[];
   user?: AppHeaderUser | null;
 };
@@ -52,9 +56,19 @@ const defaultNavigationItems: NavigationItem[] = [
     description: "Restaurant setup",
   },
   {
-    href: "/staff",
-    label: "Operations",
-    description: "Orders and menu",
+    href: "/operations/orders",
+    label: "Orders",
+    description: "Live order operations",
+  },
+  {
+    href: "/operations/menu",
+    label: "Menu Manager",
+    description: "Categories and products",
+  },
+  {
+    href: "/operations/inventory",
+    label: "Inventory",
+    description: "Stock control",
   },
   {
     href: "/order",
@@ -84,6 +98,7 @@ function BrandLogo() {
 export function AppHeader({
   activePath,
   className,
+  customerMenu,
   navigationItems = defaultNavigationItems,
   user,
 }: AppHeaderProps) {
@@ -161,6 +176,37 @@ export function AppHeader({
             >
               <LogOutIcon />
               Sign out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : customerMenu ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-lg border-white/10 bg-white/5 text-white hover:bg-white/10 hover:text-white"
+            >
+              Menu
+              <ChevronDownIcon className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-64">
+            <DropdownMenuLabel>
+              <span className="block text-stone-500">Customer</span>
+              <span className="mt-1 block text-sm font-semibold text-stone-100">
+                Order menu
+              </span>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link href={customerMenu.orderHref ?? "/order"}>Order menu</Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href={customerMenu.ordersHref ?? "/order/status"}>
+                <ClipboardListIcon />
+                Your orders
+              </Link>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

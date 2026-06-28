@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { LocalCustomerOrder, OrderLineItem } from "@/lib/constants";
@@ -9,7 +9,9 @@ import {
   syncCustomerOrdersResetMarker,
   writeStoredCustomerOrders,
 } from "@/lib/customer-orders";
+import { formatOrderDisplay } from "@/lib/order-display";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { OrderLineItemRow } from "@/components/shared/OrderLineItemRow";
 import { OrderStatusBadge } from "@/components/shared/OrderStatusBadge";
 import { SectionHeader } from "@/components/shared/SectionHeader";
 import { Spinner } from "@/components/shared/Spinner";
@@ -41,81 +43,115 @@ type ApiOrder = LocalCustomerOrder & {
 };
 
 type CustomerOrderStatusProps = {
+  locationQrSlug?: string;
   refreshKey: number;
 };
 
-export function CustomerOrderStatus({ refreshKey }: CustomerOrderStatusProps) {
+function withQr(path: string, locationQrSlug?: string) {
+  if (!locationQrSlug) {
+    return path;
+  }
+
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}qr=${encodeURIComponent(locationQrSlug)}`;
+}
+
+export function CustomerOrderStatus({ locationQrSlug, refreshKey }: CustomerOrderStatusProps) {
   const [orders, setOrders] = useState<ApiOrder[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [pendingCancelId, setPendingCancelId] = useState<string | null>(null);
   const [confirmingCancelOrder, setConfirmingCancelOrder] = useState<ApiOrder | null>(null);
+  const statusRequestRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     let isMounted = true;
     let hasHydratedStoredOrders = false;
 
     async function loadOrders() {
-      const prunedStoredOrders = readStoredCustomerOrders();
+      statusRequestRef.current?.abort();
+      const controller = new AbortController();
+      statusRequestRef.current = controller;
 
-      if (!isMounted) {
-        return;
-      }
+      try {
+        const prunedStoredOrders = readStoredCustomerOrders();
 
-      if (!hasHydratedStoredOrders) {
-        setOrders(prunedStoredOrders);
-        hasHydratedStoredOrders = true;
-      }
+        if (!isMounted) {
+          return;
+        }
 
-      if (prunedStoredOrders.length === 0) {
-        setIsLoading(false);
-        return;
-      }
+        if (!hasHydratedStoredOrders) {
+          setOrders(prunedStoredOrders);
+          hasHydratedStoredOrders = true;
+        }
 
-      const response = await fetch("/api/orders/status", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orders: prunedStoredOrders.map((order) => ({
-            orderId: order.orderId,
-            customerToken: order.customerToken,
-          })),
-        }),
-      });
+        if (prunedStoredOrders.length === 0) {
+          setIsLoading(false);
+          return;
+        }
 
-      const payload = await response.json();
+        const response = await fetch(withQr("/api/orders/status", locationQrSlug), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
+          body: JSON.stringify({
+            orders: prunedStoredOrders.map((order) => ({
+              orderId: order.orderId,
+              customerToken: order.customerToken,
+            })),
+          }),
+        });
 
-      if (!response.ok) {
-        setError(payload.error ?? "Failed to refresh orders.");
-        setIsLoading(false);
-        return;
-      }
+        if (!isMounted || controller.signal.aborted) {
+          return;
+        }
 
-      const wasReset = syncCustomerOrdersResetMarker(payload.ordersResetAt ?? null);
+        const payload = await response.json();
 
-      if (wasReset) {
-        if (isMounted) {
+        if (!isMounted || controller.signal.aborted) {
+          return;
+        }
+
+        if (!response.ok) {
+          setError(payload.error ?? "Failed to refresh orders.");
+          setIsLoading(false);
+          return;
+        }
+
+        const wasReset = syncCustomerOrdersResetMarker(payload.ordersResetAt ?? null);
+
+        if (wasReset) {
           setOrders([]);
           setError(null);
           setIsLoading(false);
           toast.success("Order history was cleared from the bar system.");
+          return;
         }
-        return;
-      }
 
-      const nextOrders = payload.orders.map((order: ApiOrder) => ({
-        ...order,
-        customerToken:
-          prunedStoredOrders.find((storedOrder) => storedOrder.orderId === order.orderId)
-            ?.customerToken ?? order.customerToken,
-      }));
+        const nextOrders = payload.orders.map((order: ApiOrder) => ({
+          ...order,
+          customerToken:
+            prunedStoredOrders.find((storedOrder) => storedOrder.orderId === order.orderId)
+              ?.customerToken ?? order.customerToken,
+        }));
 
-      writeStoredCustomerOrders(nextOrders);
-
-      if (isMounted) {
+        writeStoredCustomerOrders(nextOrders);
         setOrders(nextOrders);
         setError(null);
         setIsLoading(false);
+      } catch (fetchError) {
+        if (!controller.signal.aborted && isMounted) {
+          setError(
+            fetchError instanceof Error
+              ? fetchError.message
+              : "Failed to refresh orders.",
+          );
+          setIsLoading(false);
+        }
+      } finally {
+        if (statusRequestRef.current === controller) {
+          statusRequestRef.current = null;
+        }
       }
     }
 
@@ -124,13 +160,14 @@ export function CustomerOrderStatus({ refreshKey }: CustomerOrderStatusProps) {
 
     return () => {
       isMounted = false;
+      statusRequestRef.current?.abort();
       window.clearInterval(interval);
     };
-  }, [refreshKey]);
+  }, [locationQrSlug, refreshKey]);
 
   async function cancelOrder(order: ApiOrder) {
     setPendingCancelId(order.orderId);
-    const response = await fetch(`/api/orders/${order.orderId}/cancel`, {
+    const response = await fetch(withQr(`/api/orders/${order.orderId}/cancel`, locationQrSlug), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ customerToken: order.customerToken }),
@@ -197,7 +234,10 @@ export function CustomerOrderStatus({ refreshKey }: CustomerOrderStatusProps) {
         />
       ) : (
         <div className="grid gap-4">
-          {orders.map((order) => (
+          {orders.map((order) => {
+            const orderDisplay = formatOrderDisplay(order);
+
+            return (
             <Card
               key={order.orderId}
               className="rounded-xl border-stone-200 bg-stone-50 shadow-none"
@@ -206,7 +246,8 @@ export function CustomerOrderStatus({ refreshKey }: CustomerOrderStatusProps) {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.25em] text-stone-500">
-                    Order #{order.orderNo}
+                    {orderDisplay.label}
+                    {orderDisplay.meta ? ` · ${orderDisplay.meta}` : ""}
                   </p>
                   <h3 className="mt-1 text-xl font-semibold text-stone-900">
                     {order.drinkName}
@@ -221,22 +262,13 @@ export function CustomerOrderStatus({ refreshKey }: CustomerOrderStatusProps) {
               {order.items?.length ? (
                 <div className="mt-4 grid gap-2">
                   {order.items.map((item) => (
-                    <div
+                    <OrderLineItemRow
                       key={item.id ?? `${order.orderId}-${item.drinkId}`}
-                      className="rounded-lg border border-stone-200 bg-white px-3 py-2"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-medium text-stone-900">
-                            {item.drinkName} x{item.quantity}
-                          </p>
-                          {item.notes ? (
-                            <p className="mt-1 text-xs text-stone-500">Note: {item.notes}</p>
-                          ) : null}
-                        </div>
-                        <OrderStatusBadge status={item.status} />
-                      </div>
-                    </div>
+                      drinkName={item.drinkName}
+                      notes={item.notes}
+                      quantity={item.quantity}
+                      status={item.status}
+                    />
                   ))}
                 </div>
               ) : null}
@@ -271,7 +303,8 @@ export function CustomerOrderStatus({ refreshKey }: CustomerOrderStatusProps) {
               ) : null}
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
       </CardContent>

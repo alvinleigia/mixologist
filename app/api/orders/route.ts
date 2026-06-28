@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateCustomerToken } from "@/lib/order-token";
-import { getNextOrderNumber } from "@/lib/order-number";
+import { getLocationBusinessDate, getNextOrderNumber } from "@/lib/order-number";
 import { createOrderSchema } from "@/lib/validations/order";
 import {
   buildOrderSummary,
@@ -13,7 +13,12 @@ import { getMenuSelectionSnapshot } from "@/lib/menu";
 import { getDb } from "@/db";
 import { orderItems, orders } from "@/db/schema";
 import { requireStaffSession } from "@/lib/auth";
-import { getCurrentTenantContext } from "@/lib/tenant-context";
+import {
+  checkRateLimit,
+  getRequestRateLimitKey,
+  rateLimitResponse,
+} from "@/lib/rate-limit";
+import { getCurrentTenantContext, getPublicTenantContextFromRequest } from "@/lib/tenant-context";
 
 export async function GET() {
   try {
@@ -44,9 +49,19 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    const rateLimit = checkRateLimit({
+      key: getRequestRateLimitKey(request, "public:order-create"),
+      limit: 12,
+      windowMs: 60_000,
+    });
+
+    if (!rateLimit.allowed) {
+      return rateLimitResponse(rateLimit);
+    }
+
     const body = await request.json();
     const parsed = createOrderSchema.safeParse(body);
-    const tenantContext = await getCurrentTenantContext();
+    const tenantContext = await getPublicTenantContextFromRequest(request);
 
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
@@ -70,7 +85,7 @@ export async function POST(request: NextRequest) {
     }> = [];
 
     for (const requestedItem of parsed.data.items) {
-      const { category, item } = await getMenuSelectionSnapshot(
+      const { category, inventory, item } = await getMenuSelectionSnapshot(
         requestedItem.categoryId,
         requestedItem.drinkId,
         tenantContext,
@@ -78,6 +93,13 @@ export async function POST(request: NextRequest) {
 
       if (!category || !item) {
         return NextResponse.json({ error: "Invalid drink selection." }, { status: 400 });
+      }
+
+      if (inventory?.isTracked && Number(inventory.currentQuantity) < requestedItem.quantity) {
+        return NextResponse.json(
+          { error: `${item.name} is currently out of stock.` },
+          { status: 409 },
+        );
       }
 
       cartItems.push({
@@ -100,7 +122,6 @@ export async function POST(request: NextRequest) {
 
     const db = getDb();
     const customerToken = generateCustomerToken();
-    const orderNo = await getNextOrderNumber();
     const summaryCategoryName =
       cartItems.length === 1 ? cartItems[0].categoryName : `${cartItems.length} categories`;
     const summaryDrinkName = buildOrderSummary(
@@ -108,11 +129,14 @@ export async function POST(request: NextRequest) {
     );
 
     const createdOrder = await db.transaction(async (tx) => {
+      const orderDate = await getLocationBusinessDate(tx, tenantContext);
+      const orderNo = await getNextOrderNumber(tx, tenantContext, orderDate);
       const [newOrder] = await tx
         .insert(orders)
         .values({
           organizationId: tenantContext.organizationId,
           locationId: tenantContext.locationId,
+          orderDate,
           orderNo,
           customerName: parsed.data.customerName.trim(),
           customerToken,

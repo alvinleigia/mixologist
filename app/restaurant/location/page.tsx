@@ -17,7 +17,11 @@ export default async function RestaurantLocationPage() {
       eyebrow="Location"
       title="Location settings"
       description="Edit the active operating location for this restaurant."
-      user={{ name: session.user.name, role: session.user.role }}
+      user={{
+        name: session.user.name,
+        organizationId: session.user.organizationId,
+        role: session.user.role,
+      }}
     >
       <TenantLocationSettingsForm location={snapshot.location} />
     </SaasAdminShell>

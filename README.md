@@ -7,6 +7,7 @@ Foodie POS is a Next.js restaurant order operations MVP being evolved into a mul
 - Customer order page with cart and recent order status.
 - Staff operations panel with item-level order workflow.
 - Menu manager for categories and products.
+- Inventory manager for location-scoped product stock levels.
 - Restaurant admin route for restaurant settings, location settings and staff access.
 - Dedicated SaaS admin route shells at `/platform`, `/company` and `/restaurant`.
 - Platform admin can create/manage parent company tenants.
@@ -15,7 +16,22 @@ Foodie POS is a Next.js restaurant order operations MVP being evolved into a mul
 - Company admin can create restaurant manager/order operator invite links.
 - Users with multiple active location memberships can switch location context from the admin/operations header.
 - Platform/company dashboards show first summary cards for tenants, locations, staff and order activity.
+- Company and restaurant dashboards show range-filtered operational reports for revenue, status counts, prep/collection timing, cancelled items, category mix, staff activity, location activity, top products and stock alerts, with CSV export.
+- Platform commercial foundation includes seeded SaaS plans, company trial subscriptions, subscription status controls and platform commercial metrics.
+- Suspended or cancelled tenants are blocked from login, tenant APIs, operations pages and public QR ordering.
+- Platform admin can export company tenant data and delete company tenants with typed confirmation.
+- Phase 7 audit foundation records tenant-management, staff, menu, inventory and order-transition actions in `audit_logs`, with scoped dashboard viewing and CSV export.
+- Phase 7 MVP rate limiting protects public order, order status, cancellation, invitation acceptance and credential-attempt flows.
+- Phase 7 reliability hardening adds structured server logging and abortable customer/staff polling to avoid overlapping refresh calls.
 - Restaurant admins can create staff invitation links so invited users set their own password.
+- Public customer ordering supports location QR links such as `/order?qr=main-bar`.
+- Menu items can be marked sold out from the menu manager.
+- Restaurant managers can track current quantity, low-stock threshold, units and notes for each menu product.
+- Inventory manager shows tracked, low-stock, out-of-stock and untracked product summary cards.
+- Delivered order items automatically deduct tracked inventory for the matching menu product.
+- Order numbers reset per restaurant location and business date instead of using one global platform sequence.
+- Customer and staff order screens share the same order number/date display formatter.
+- Public ordering shows low-stock/out-of-stock inventory states for tracked products and blocks zero-stock tracked products.
 - Supabase/Postgres database via Drizzle.
 - Auth.js credentials login backed by database users.
 - Tenant foundation with organizations, locations and memberships.
@@ -79,7 +95,11 @@ npm run dev
 Open:
 
 - Customer order page: `http://localhost:3000/order`
-- Staff operations: `http://localhost:3000/staff`
+- Location QR customer order page: `http://localhost:3000/order?qr=your-location-qr-slug`
+- Customer order status page: `http://localhost:3000/order/status?qr=your-location-qr-slug`
+- Operations orders: `http://localhost:3000/operations/orders`
+- Operations menu manager: `http://localhost:3000/operations/menu`
+- Operations inventory manager: `http://localhost:3000/operations/inventory`
 - Restaurant admin: `http://localhost:3000/restaurant`
 - Company admin shell: `http://localhost:3000/company`
 - Platform admin shell: `http://localhost:3000/platform`
@@ -104,5 +124,11 @@ npm run build
 - Location switching validates active memberships before updating the session.
 - Invitation tokens are stored as hashes and expire after 7 days.
 - Dashboard summaries are scoped by platform/company access before returning counts.
-- Public customer routes currently use the default MVP tenant until QR/location routing is introduced.
-- Inventory is intentionally deferred until the inventory module is designed.
+- Audit logs are scoped by the signed-in user's role and tenant context before they are shown or exported.
+- MVP rate limiting is currently in-memory per server instance; use Redis/Upstash or another shared store before serious production traffic.
+- Public customer routes can resolve tenant/location from the location QR slug using `?qr=...`.
+- Customer orders created from plain `/order` without a QR slug use the hidden default MVP tenant.
+- Inventory records are scoped by restaurant/location and linked to menu products.
+- Inventory quantities are deducted when a staff user marks an order item delivered. Products with stock tracking disabled are ignored.
+- Order creation validates tracked stock on the server before accepting the order.
+- Order numbers are unique per organization/location/order date, so each location gets its own daily sequence.

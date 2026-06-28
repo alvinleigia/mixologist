@@ -1,9 +1,11 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getDb } from "@/db";
-import { orders } from "@/db/schema";
+import { orderItems, orders } from "@/db/schema";
 import { requireStaffSession } from "@/lib/auth";
+import { writeAuditLog } from "@/lib/audit-log";
+import { deductInventoryForDeliveredItem } from "@/lib/inventory";
 import { serializeOrder } from "@/lib/orders";
 import { getCurrentTenantContext } from "@/lib/tenant-context";
 
@@ -43,21 +45,76 @@ export async function POST(
       );
     }
 
-    const [updatedOrder] = await db
-      .update(orders)
-      .set({
-        status: "DELIVERED",
-        deliveredAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(orders.id, id),
-          eq(orders.organizationId, tenantContext.organizationId),
-          eq(orders.locationId, tenantContext.locationId),
-        ),
-      )
-      .returning();
+    const updatedOrder = await db.transaction(async (tx) => {
+      const now = new Date();
+      const items = await tx
+        .select()
+        .from(orderItems)
+        .where(
+          and(
+            eq(orderItems.orderId, id),
+            eq(orderItems.organizationId, tenantContext.organizationId),
+            eq(orderItems.locationId, tenantContext.locationId),
+          ),
+        );
+      const deliverableItems = items.filter((item) => item.status === "READY");
+
+      if (deliverableItems.length > 0) {
+        await tx
+          .update(orderItems)
+          .set({
+            status: "DELIVERED",
+            deliveredAt: now,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              inArray(
+                orderItems.id,
+                deliverableItems.map((item) => item.id),
+              ),
+              eq(orderItems.organizationId, tenantContext.organizationId),
+              eq(orderItems.locationId, tenantContext.locationId),
+            ),
+          );
+
+        for (const item of deliverableItems) {
+          await deductInventoryForDeliveredItem(tx, tenantContext, item);
+        }
+      }
+
+      const [nextOrder] = await tx
+        .update(orders)
+        .set({
+          status: "DELIVERED",
+          deliveredAt: now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(orders.id, id),
+            eq(orders.organizationId, tenantContext.organizationId),
+            eq(orders.locationId, tenantContext.locationId),
+          ),
+        )
+        .returning();
+
+      return nextOrder;
+    });
+
+    await writeAuditLog({
+      actor: session.user,
+      organizationId: tenantContext.organizationId,
+      locationId: tenantContext.locationId,
+      action: "order.deliver",
+      entityType: "order",
+      entityId: updatedOrder.id,
+      metadata: {
+        orderNo: updatedOrder.orderNo,
+        previousStatus: order.status,
+        nextStatus: updatedOrder.status,
+      },
+    });
 
     return NextResponse.json(serializeOrder(updatedOrder));
   } catch (error) {

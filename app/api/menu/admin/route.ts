@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 
-import { requireStaffSession } from "@/lib/auth";
+import { requireMenuManagerSession } from "@/lib/auth";
 import { getAdminMenu } from "@/lib/menu";
 import { getCurrentTenantContext } from "@/lib/tenant-context";
 
 export async function GET() {
   try {
-    const session = await requireStaffSession();
+    const session = await requireMenuManagerSession();
 
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

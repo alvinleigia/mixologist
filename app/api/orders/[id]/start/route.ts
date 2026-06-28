@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/db";
 import { orders } from "@/db/schema";
 import { requireStaffSession } from "@/lib/auth";
+import { writeAuditLog } from "@/lib/audit-log";
 import { serializeOrder } from "@/lib/orders";
 import { getCurrentTenantContext } from "@/lib/tenant-context";
 
@@ -58,6 +59,20 @@ export async function POST(
         ),
       )
       .returning();
+
+    await writeAuditLog({
+      actor: session.user,
+      organizationId: tenantContext.organizationId,
+      locationId: tenantContext.locationId,
+      action: "order.start",
+      entityType: "order",
+      entityId: updatedOrder.id,
+      metadata: {
+        orderNo: updatedOrder.orderNo,
+        previousStatus: order.status,
+        nextStatus: updatedOrder.status,
+      },
+    });
 
     return NextResponse.json(serializeOrder(updatedOrder));
   } catch (error) {

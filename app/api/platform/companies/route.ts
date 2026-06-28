@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 
 import { requireRole } from "@/lib/auth";
+import { writeAuditLog } from "@/lib/audit-log";
 import { platformAdminRoles } from "@/lib/role-access";
 import { createCompanyOrganization, listPlatformCompanies } from "@/lib/saas-admin";
 
@@ -23,7 +24,20 @@ export async function POST(request: Request) {
   }
 
   try {
-    await createCompanyOrganization(await request.json());
+    const company = await createCompanyOrganization(await request.json());
+    await writeAuditLog({
+      actor: session.user,
+      organizationId: company.id,
+      action: "platform.company.create",
+      entityType: "organization",
+      entityId: company.id,
+      metadata: {
+        name: company.name,
+        slug: company.slug,
+        type: company.type,
+      },
+    });
+
     return NextResponse.json({ companies: await listPlatformCompanies() });
   } catch (error) {
     if (error instanceof ZodError) {

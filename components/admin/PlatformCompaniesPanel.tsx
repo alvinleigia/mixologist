@@ -38,6 +38,22 @@ type CompanyOrganization = {
   timezone: string;
   currency: string;
   isActive: boolean;
+  subscription: {
+    id: string;
+    status: "TRIALING" | "ACTIVE" | "PAST_DUE" | "SUSPENDED" | "CANCELLED";
+    trialEndsAt: string | null;
+    currentPeriodEndsAt: string | null;
+    plan: {
+      name: string;
+      slug: string;
+      monthlyPrice: string;
+      maxRestaurants: number;
+      maxLocations: number;
+      maxUsers: number;
+      maxMonthlyOrders: number;
+      storageMb: number;
+    } | null;
+  } | null;
 };
 
 type PlatformSummary = {
@@ -47,6 +63,14 @@ type PlatformSummary = {
   activeStaffMemberships: number;
   activeOrders: number;
   completedOrders: number;
+  commercial: {
+    activePlans: number;
+    trialingCompanies: number;
+    activeCompanies: number;
+    suspendedCompanies: number;
+    cancelledCompanies: number;
+    monthlyOrders: number;
+  };
 };
 
 type PlatformReport = ReportBreakdownRow & {
@@ -78,6 +102,20 @@ function getApiError(payload: unknown) {
   return "Action failed.";
 }
 
+function formatDate(value: string | null | undefined) {
+  if (!value) {
+    return "Not set";
+  }
+
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(
+    new Date(value),
+  );
+}
+
+function formatStatus(status: string | null | undefined) {
+  return status ? status.replaceAll("_", " ").toLowerCase() : "not configured";
+}
+
 export function PlatformCompaniesPanel() {
   const [companies, setCompanies] = useState<CompanyOrganization[]>([]);
   const [summary, setSummary] = useState<PlatformSummary | null>(null);
@@ -85,6 +123,7 @@ export function PlatformCompaniesPanel() {
   const [draft, setDraft] = useState(emptyCompanyDraft);
   const [staffDrafts, setStaffDrafts] = useState<Record<string, typeof emptyStaffDraft>>({});
   const [inviteUrls, setInviteUrls] = useState<Record<string, string>>({});
+  const [deleteConfirmations, setDeleteConfirmations] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
@@ -152,6 +191,37 @@ export function PlatformCompaniesPanel() {
     toast.success(payload.inviteUrl ? "Invite link created." : "Companies updated.");
   }
 
+  async function deleteCompany(companyId: string) {
+    const confirmation = deleteConfirmations[companyId] ?? "";
+    setPendingAction(`delete:${companyId}`);
+
+    const response = await fetch(`/api/platform/companies/${companyId}/delete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirmation }),
+    });
+    const payload = await response.json();
+
+    if (!response.ok) {
+      const message = getApiError(payload);
+      setError(message);
+      toast.error(message);
+      setPendingAction(null);
+      return;
+    }
+
+    setCompanies(payload.companies ?? []);
+    setDeleteConfirmations((current) => {
+      const next = { ...current };
+      delete next[companyId];
+      return next;
+    });
+    await refreshPlatformSummary();
+    setError(null);
+    setPendingAction(null);
+    toast.success("Company tenant deleted.");
+  }
+
   function getStaffDraft(companyId: string) {
     return staffDrafts[companyId] ?? emptyStaffDraft;
   }
@@ -205,6 +275,31 @@ export function PlatformCompaniesPanel() {
               label: "Non-cancelled orders",
               value: summary.completedOrders,
               helper: "All-time orders excluding cancellations.",
+            },
+            {
+              label: "Trial companies",
+              value: summary.commercial.trialingCompanies,
+              helper: "Company tenants currently on trial.",
+            },
+            {
+              label: "Active subscriptions",
+              value: summary.commercial.activeCompanies,
+              helper: "Company tenants marked active.",
+            },
+            {
+              label: "Suspended tenants",
+              value: summary.commercial.suspendedCompanies,
+              helper: "Commercially suspended company tenants.",
+            },
+            {
+              label: "Monthly orders",
+              value: summary.commercial.monthlyOrders,
+              helper: "Orders created since the first day of this month.",
+            },
+            {
+              label: "Active plans",
+              value: summary.commercial.activePlans,
+              helper: "Configured SaaS plans available for tenants.",
             },
           ]}
         />
@@ -301,10 +396,18 @@ export function PlatformCompaniesPanel() {
                   <p className="text-sm text-stone-500">
                     {company.slug} - {company.timezone} - {company.currency}
                   </p>
+                  <p className="mt-1 text-xs text-stone-400">
+                    {company.subscription?.plan?.name ?? "No plan"} -{" "}
+                    {formatStatus(company.subscription?.status)} - Trial ends:{" "}
+                    {formatDate(company.subscription?.trialEndsAt)}
+                  </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="rounded-md border border-stone-200 bg-white px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">
                     {company.isActive ? "Active" : "Disabled"}
+                  </span>
+                  <span className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-amber-800">
+                    {company.subscription?.status ?? "No subscription"}
                   </span>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -324,6 +427,46 @@ export function PlatformCompaniesPanel() {
                       <DropdownMenuItem asChild>
                         <Link href={`/platform/companies/${company.id}`}>Edit details</Link>
                       </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <a href={`/api/platform/companies/${company.id}/export`}>
+                          Export company data
+                        </a>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator className="bg-stone-200" />
+                      <DropdownMenuItem
+                        onSelect={() =>
+                          void submitJson(
+                            `/api/platform/companies/${company.id}/subscription`,
+                            { status: "ACTIVE" },
+                            `subscription:${company.id}`,
+                          )
+                        }
+                      >
+                        Mark subscription active
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={() =>
+                          void submitJson(
+                            `/api/platform/companies/${company.id}/subscription`,
+                            { status: "SUSPENDED" },
+                            `subscription:${company.id}`,
+                          )
+                        }
+                      >
+                        Suspend subscription
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onSelect={() =>
+                          void submitJson(
+                            `/api/platform/companies/${company.id}/subscription`,
+                            { status: "CANCELLED" },
+                            `subscription:${company.id}`,
+                          )
+                        }
+                      >
+                        Cancel subscription
+                      </DropdownMenuItem>
                       <DropdownMenuSeparator className="bg-stone-200" />
                       <DropdownMenuItem
                         variant={company.isActive ? "destructive" : "default"}
@@ -340,6 +483,64 @@ export function PlatformCompaniesPanel() {
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
+              </div>
+
+              {company.subscription?.plan ? (
+                <div className="grid gap-2 rounded-lg border border-stone-200 bg-white p-3 text-sm text-stone-600 md:grid-cols-5">
+                  <CommercialMetric
+                    label="Plan"
+                    value={`${company.subscription.plan.name} / ${company.subscription.plan.monthlyPrice}`}
+                  />
+                  <CommercialMetric
+                    label="Restaurants"
+                    value={company.subscription.plan.maxRestaurants}
+                  />
+                  <CommercialMetric
+                    label="Locations"
+                    value={company.subscription.plan.maxLocations}
+                  />
+                  <CommercialMetric
+                    label="Users"
+                    value={company.subscription.plan.maxUsers}
+                  />
+                  <CommercialMetric
+                    label="Monthly orders"
+                    value={company.subscription.plan.maxMonthlyOrders}
+                  />
+                </div>
+              ) : null}
+
+              <div className="grid gap-3 rounded-lg border border-rose-100 bg-white p-3 md:grid-cols-[1fr_auto] md:items-end">
+                <div className="grid gap-1">
+                  <p className="text-sm font-semibold text-stone-950">Delete tenant data</p>
+                  <p className="text-sm text-stone-500">
+                    Export first if needed, then type DELETE to remove this company,
+                    its restaurants, locations, staff assignments, menus and orders.
+                  </p>
+                  <Input
+                    value={deleteConfirmations[company.id] ?? ""}
+                    onChange={(event) =>
+                      setDeleteConfirmations((current) => ({
+                        ...current,
+                        [company.id]: event.target.value,
+                      }))
+                    }
+                    placeholder="Type DELETE"
+                    className="mt-2 max-w-xs bg-white"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={
+                    pendingAction === `delete:${company.id}` ||
+                    (deleteConfirmations[company.id] ?? "") !== "DELETE"
+                  }
+                  className="rounded-lg"
+                  onClick={() => void deleteCompany(company.id)}
+                >
+                  {pendingAction === `delete:${company.id}` ? "Deleting..." : "Delete Company"}
+                </Button>
               </div>
 
               <form
@@ -424,6 +625,17 @@ export function PlatformCompaniesPanel() {
           })}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function CommercialMetric({ label, value }: { label: string; value: number | string }) {
+  return (
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">
+        {label}
+      </p>
+      <p className="mt-1 font-semibold text-stone-950">{value}</p>
     </div>
   );
 }

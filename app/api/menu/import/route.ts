@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { requireStaffSession } from "@/lib/auth";
+import { requireMenuManagerSession } from "@/lib/auth";
 import { importMenuCsv } from "@/lib/menu";
 import { getCurrentTenantContext } from "@/lib/tenant-context";
 import { z } from "zod";
@@ -11,7 +11,7 @@ const importMenuSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await requireStaffSession();
+    const session = await requireMenuManagerSession();
 
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

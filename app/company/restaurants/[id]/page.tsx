@@ -32,7 +32,11 @@ export default async function CompanyRestaurantEditPage(
       eyebrow="Company"
       title="Restaurant settings"
       description="Edit restaurant tenant details and lifecycle status."
-      user={{ name: session.user.name, role: session.user.role }}
+      user={{
+        name: session.user.name,
+        organizationId: session.user.organizationId,
+        role: session.user.role,
+      }}
     >
       <OrganizationEditPanel
         apiPath={`/api/company/restaurants/${restaurant.id}`}

@@ -1,13 +1,33 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { DownloadIcon, ImageIcon, PencilLineIcon, PlusIcon, UploadIcon } from "lucide-react";
+import {
+  DownloadIcon,
+  ImageIcon,
+  PackageCheckIcon,
+  PackageXIcon,
+  PencilLineIcon,
+  PlusIcon,
+  SparklesIcon,
+  Trash2Icon,
+  UploadIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { EmptyState } from "@/components/shared/EmptyState";
 import { FormField } from "@/components/shared/FormField";
 import { SectionHeader } from "@/components/shared/SectionHeader";
 import { Spinner } from "@/components/shared/Spinner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -41,6 +61,7 @@ type ItemDraft = {
   imageUrl: string;
   sortOrder: string;
   isActive: boolean;
+  isSoldOut: boolean;
 };
 
 const emptyCategoryDraft: CategoryDraft = {
@@ -60,6 +81,7 @@ const emptyItemDraft: ItemDraft = {
   imageUrl: "",
   sortOrder: "0",
   isActive: true,
+  isSoldOut: false,
 };
 
 function getApiErrorMessage(payload: unknown) {
@@ -107,6 +129,8 @@ export function MenuManager() {
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
   const [isItemDialogOpen, setIsItemDialogOpen] = useState(false);
+  const [isClearMenuDialogOpen, setIsClearMenuDialogOpen] = useState(false);
+  const [clearMenuConfirmationText, setClearMenuConfirmationText] = useState("");
   const [categoryDraft, setCategoryDraft] = useState<CategoryDraft>(emptyCategoryDraft);
   const [itemDraft, setItemDraft] = useState<ItemDraft>(emptyItemDraft);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -177,6 +201,7 @@ export function MenuManager() {
       imageUrl: item.imageUrl ?? "",
       sortOrder: String(item.sortOrder),
       isActive: item.isActive,
+      isSoldOut: item.isSoldOut,
     });
     setIsItemDialogOpen(true);
   }
@@ -233,6 +258,7 @@ export function MenuManager() {
         imageUrl: itemDraft.imageUrl,
         sortOrder: itemDraft.sortOrder,
         isActive: itemDraft.isActive,
+        isSoldOut: itemDraft.isSoldOut,
       }),
     });
 
@@ -252,6 +278,35 @@ export function MenuManager() {
     setItemDraft(emptyItemDraft);
     setPendingAction(null);
     toast.success(itemDraft.id ? "Item updated." : "Item added.");
+  }
+
+  async function toggleItemSoldOut(item: MenuItemRecord) {
+    const nextSoldOutState = !item.isSoldOut;
+    setPendingAction(`sold-out:${item.id}`);
+
+    const response = await fetch(`/api/menu/items/${item.id}/sold-out`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isSoldOut: nextSoldOutState }),
+    });
+    const payload = await response.json();
+
+    if (!response.ok) {
+      const message = getApiErrorMessage(payload);
+      setError(message);
+      toast.error(message);
+      setPendingAction(null);
+      return;
+    }
+
+    setCategories(payload.categories ?? []);
+    setError(null);
+    setPendingAction(null);
+    toast.success(
+      nextSoldOutState
+        ? `${item.name} marked sold out.`
+        : `${item.name} is available again.`,
+    );
   }
 
   async function exportMenu() {
@@ -307,13 +362,63 @@ export function MenuManager() {
     );
   }
 
+  async function seedStarterMenu() {
+    setPendingAction("seed");
+
+    const response = await fetch("/api/menu/seed", {
+      method: "POST",
+    });
+    const payload = await response.json();
+
+    if (!response.ok) {
+      const message = getApiErrorMessage(payload);
+      setError(message);
+      toast.error(message);
+      setPendingAction(null);
+      return;
+    }
+
+    setCategories(payload.categories ?? []);
+    setError(null);
+    setPendingAction(null);
+    toast.success(
+      `Starter menu seeded: ${payload.summary.createdCategories} categories and ${payload.summary.createdItems} products added.`,
+    );
+  }
+
+  async function clearCurrentMenu() {
+    setPendingAction("clear-menu");
+
+    const response = await fetch("/api/menu/clear", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirmationText: clearMenuConfirmationText }),
+    });
+    const payload = await response.json();
+
+    if (!response.ok) {
+      const message = getApiErrorMessage(payload);
+      setError(message);
+      toast.error(message);
+      setPendingAction(null);
+      return;
+    }
+
+    setCategories(payload.categories ?? []);
+    setError(null);
+    setClearMenuConfirmationText("");
+    setIsClearMenuDialogOpen(false);
+    setPendingAction(null);
+    toast.success(payload.message ?? "Current menu cleared.");
+  }
+
   return (
     <>
       <Card className="rounded-xl border-white/60 bg-white/92 shadow-[0_20px_60px_rgba(40,26,20,0.08)]">
         <CardHeader className="px-6 pt-6">
           <SectionHeader
             eyebrow="Menu Manager"
-            title="Manage categories and inventory"
+            title="Manage categories and products"
             description="Create menu sections, then add products with price, description, and image links."
             meta={
               <p className="text-xs font-medium uppercase tracking-[0.2em] text-stone-400">
@@ -327,6 +432,30 @@ export function MenuManager() {
           {error ? <p className="text-sm text-rose-600">{error}</p> : null}
 
           <div className="flex flex-wrap gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void seedStarterMenu()}
+              disabled={pendingAction === "seed" || sortedCategories.length > 0}
+              className="rounded-lg border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100"
+            >
+              {pendingAction === "seed" ? (
+                <Spinner className="text-amber-900" />
+              ) : (
+                <SparklesIcon className="size-4" />
+              )}
+              Seed Starter Menu
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => setIsClearMenuDialogOpen(true)}
+              disabled={pendingAction === "clear-menu" || sortedCategories.length === 0}
+              className="rounded-lg"
+            >
+              <Trash2Icon className="size-4" />
+              Clear Current Menu
+            </Button>
             <Button type="button" onClick={openCreateCategoryDialog} className="rounded-lg bg-stone-950 text-white hover:bg-stone-800">
               <PlusIcon className="size-4" />
               Add Category
@@ -383,6 +512,10 @@ export function MenuManager() {
             <p className="mt-2 text-sm text-stone-600">
               Export the current menu to CSV, edit it in Excel or Google Sheets, then import it back.
               Import merges rows by slug when available, or by matching section/item name.
+            </p>
+            <p className="mt-2 text-sm text-stone-600">
+              Use Seed Starter Menu only for a brand-new empty location. It creates the default
+              cocktails and mocktails under the current restaurant/location.
             </p>
             <p className="mt-2 text-xs uppercase tracking-[0.2em] text-stone-400">
               Required columns: category_name, item_name
@@ -476,6 +609,11 @@ export function MenuManager() {
                                     Hidden
                                   </span>
                                 ) : null}
+                                {item.isSoldOut ? (
+                                  <span className="rounded-lg bg-rose-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-rose-700">
+                                    Sold out
+                                  </span>
+                                ) : null}
                               </div>
                               <p className="mt-1 text-sm text-stone-600">
                                 {item.description || "No description yet."}
@@ -484,7 +622,27 @@ export function MenuManager() {
                             <div className="text-left md:text-right">
                               <p className="text-sm font-semibold text-stone-900">{formatPrice(item.price)}</p>
                             </div>
-                            <div className="flex justify-start md:justify-end">
+                            <div className="flex flex-wrap justify-start gap-2 md:justify-end">
+                              <Button
+                                type="button"
+                                variant={item.isSoldOut ? "destructive" : "outline"}
+                                onClick={() => void toggleItemSoldOut(item)}
+                                disabled={pendingAction === `sold-out:${item.id}`}
+                                className={
+                                  item.isSoldOut
+                                    ? "rounded-lg"
+                                    : "rounded-lg border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800"
+                                }
+                              >
+                                {pendingAction === `sold-out:${item.id}` ? (
+                                  <Spinner className={item.isSoldOut ? "text-rose-50" : "text-emerald-700"} />
+                                ) : item.isSoldOut ? (
+                                  <PackageXIcon className="size-4" />
+                                ) : (
+                                  <PackageCheckIcon className="size-4" />
+                                )}
+                                {item.isSoldOut ? "Sold Out" : "In Stock"}
+                              </Button>
                               <Button
                                 type="button"
                                 variant="outline"
@@ -575,6 +733,67 @@ export function MenuManager() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={isClearMenuDialogOpen}
+        onOpenChange={(open) => {
+          if (pendingAction === "clear-menu") {
+            return;
+          }
+
+          setIsClearMenuDialogOpen(open);
+
+          if (!open) {
+            setClearMenuConfirmationText("");
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear this location menu?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes every category and product for the current
+              restaurant/location only. Existing orders are not deleted. To confirm, type{" "}
+              <span className="font-semibold text-stone-900">delete</span> below.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-stone-700">Type delete to continue</p>
+            <Input
+              value={clearMenuConfirmationText}
+              onChange={(event) => setClearMenuConfirmationText(event.target.value)}
+              placeholder="delete"
+              autoComplete="off"
+              disabled={pendingAction === "clear-menu"}
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pendingAction === "clear-menu"}>
+              Keep Menu
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={
+                pendingAction === "clear-menu" ||
+                clearMenuConfirmationText.trim().toLowerCase() !== "delete"
+              }
+              onClick={(event) => {
+                event.preventDefault();
+                void clearCurrentMenu();
+              }}
+            >
+              {pendingAction === "clear-menu" ? (
+                <span className="inline-flex items-center gap-2">
+                  <Spinner className="text-rose-700" />
+                  Clearing...
+                </span>
+              ) : (
+                "Delete Menu"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={isItemDialogOpen} onOpenChange={setIsItemDialogOpen}>
         <DialogContent className="max-w-4xl rounded-xl border border-white/70 bg-white p-0">
@@ -675,6 +894,15 @@ export function MenuManager() {
                 }
               />
               Show this product to customers
+            </label>
+            <label className="flex items-center gap-3 rounded-xl border border-stone-200 px-4 py-3 text-sm text-stone-700">
+              <Checkbox
+                checked={itemDraft.isSoldOut}
+                onCheckedChange={(checked) =>
+                  setItemDraft((current) => ({ ...current, isSoldOut: checked === true }))
+                }
+              />
+              Mark this product as sold out
             </label>
           </div>
           <DialogFooter className="border-stone-200 bg-stone-50/80">

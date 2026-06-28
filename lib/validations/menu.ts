@@ -26,6 +26,7 @@ export const menuCategorySchema = z.object({
   description: z.string().max(240, "Description is too long").optional().transform(emptyToNull),
   sortOrder: z.coerce.number().int().min(0).default(0),
   isActive: z.boolean().default(true),
+  isSoldOut: z.boolean().default(false),
 });
 
 export const menuItemSchema = z.object({

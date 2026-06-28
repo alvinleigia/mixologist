@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { requireStaffSession } from "@/lib/auth";
+import { requireMenuManagerSession } from "@/lib/auth";
+import { writeAuditLog } from "@/lib/audit-log";
 import { getAdminMenu, updateMenuCategory } from "@/lib/menu";
 import { getCurrentTenantContext } from "@/lib/tenant-context";
 import { menuCategorySchema } from "@/lib/validations/menu";
@@ -11,7 +12,7 @@ type RouteContext = {
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
-    const session = await requireStaffSession();
+    const session = await requireMenuManagerSession();
 
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -31,6 +32,20 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (!category) {
       return NextResponse.json({ error: "Category not found." }, { status: 404 });
     }
+
+    await writeAuditLog({
+      actor: session.user,
+      organizationId: tenantContext.organizationId,
+      locationId: tenantContext.locationId,
+      action: "menu.category.update",
+      entityType: "menu_category",
+      entityId: category.id,
+      metadata: {
+        name: category.name,
+        slug: category.slug,
+        isActive: category.isActive,
+      },
+    });
 
     return NextResponse.json({ categories: await getAdminMenu(tenantContext) });
   } catch (error) {

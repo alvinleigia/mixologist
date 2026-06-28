@@ -2,9 +2,24 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 
 import { acceptStaffInvitation } from "@/lib/invitations";
+import {
+  checkRateLimit,
+  getRequestRateLimitKey,
+  rateLimitResponse,
+} from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
   try {
+    const rateLimit = checkRateLimit({
+      key: getRequestRateLimitKey(request, "public:invite-accept"),
+      limit: 10,
+      windowMs: 10 * 60_000,
+    });
+
+    if (!rateLimit.allowed) {
+      return rateLimitResponse(rateLimit);
+    }
+
     await acceptStaffInvitation(await request.json());
 
     return NextResponse.json({ ok: true });

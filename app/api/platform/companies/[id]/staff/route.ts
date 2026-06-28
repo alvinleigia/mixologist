@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 
 import { requireRole } from "@/lib/auth";
+import { writeAuditLog } from "@/lib/audit-log";
 import { createCompanyStaffInvitation } from "@/lib/invitations";
 import { platformAdminRoles } from "@/lib/role-access";
 import { listPlatformCompanies } from "@/lib/saas-admin";
@@ -21,6 +22,20 @@ export async function POST(request: Request, props: { params: Promise<{ id: stri
       await request.json(),
       origin,
     );
+
+    await writeAuditLog({
+      actor: session.user,
+      organizationId: id,
+      action: "platform.company_staff.invite",
+      entityType: "staff_invitation",
+      entityId: invitation.invitation.id,
+      metadata: {
+        userId: invitation.user.id,
+        membershipId: invitation.membership.id,
+        role: invitation.membership.role,
+        username: invitation.user.username,
+      },
+    });
 
     return NextResponse.json({
       companies: await listPlatformCompanies(),

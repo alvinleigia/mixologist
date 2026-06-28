@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -31,6 +31,7 @@ import { OrderItemStatus } from "@/lib/constants";
 type StaffOrder = {
   orderId: string;
   orderNo: number;
+  orderDate?: string | null;
   customerName: string;
   categoryName: string;
   drinkName: string;
@@ -83,58 +84,70 @@ export function StaffOrderBoard() {
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
   const [clearConfirmationText, setClearConfirmationText] = useState("");
+  const ordersRequestRef = useRef<AbortController | null>(null);
+  const isMountedRef = useRef(false);
 
-  async function syncOrders() {
-    setIsRefreshing(true);
-    const response = await fetch("/api/orders");
-    const payload = await response.json();
+  async function syncOrders(options: { showRefreshing?: boolean } = {}) {
+    ordersRequestRef.current?.abort();
+    const controller = new AbortController();
+    ordersRequestRef.current = controller;
 
-    if (!response.ok) {
-      setError(payload.error ?? "Failed to load orders.");
-      setIsRefreshing(false);
-      setHasLoadedOnce(true);
-      return;
+    if (options.showRefreshing ?? true) {
+      setIsRefreshing(true);
     }
 
-    setOrders({
-      activeOrders: payload.activeOrders ?? [],
-      pastOrders: payload.pastOrders ?? [],
-    });
-    setError(null);
-    setIsRefreshing(false);
-    setHasLoadedOnce(true);
-  }
-
-  useEffect(() => {
-    let isMounted = true;
-
-    async function fetchOrders() {
-      const response = await fetch("/api/orders");
+    try {
+      const response = await fetch("/api/orders", {
+        signal: controller.signal,
+      });
       const payload = await response.json();
 
-      if (!response.ok) {
-        if (isMounted) {
-          setError(payload.error ?? "Failed to load orders.");
-          setHasLoadedOnce(true);
-        }
+      if (!isMountedRef.current || controller.signal.aborted) {
         return;
       }
 
-      if (isMounted) {
-        setOrders({
-          activeOrders: payload.activeOrders ?? [],
-          pastOrders: payload.pastOrders ?? [],
-        });
-        setError(null);
-        setHasLoadedOnce(true);
+      if (!response.ok) {
+        setError(payload.error ?? "Failed to load orders.");
+        return;
+      }
+
+      setOrders({
+        activeOrders: payload.activeOrders ?? [],
+        pastOrders: payload.pastOrders ?? [],
+      });
+      setError(null);
+    } catch (fetchError) {
+      if (!controller.signal.aborted && isMountedRef.current) {
+        setError(
+          fetchError instanceof Error
+            ? fetchError.message
+            : "Failed to load orders.",
+        );
+      }
+    } finally {
+      if (ordersRequestRef.current === controller) {
+        ordersRequestRef.current = null;
+        if (isMountedRef.current) {
+          setIsRefreshing(false);
+          setHasLoadedOnce(true);
+        }
       }
     }
+  }
 
-    fetchOrders();
-    const interval = window.setInterval(fetchOrders, 4000);
+  useEffect(() => {
+    isMountedRef.current = true;
+    const initialLoad = window.setTimeout(() => {
+      void syncOrders();
+    }, 0);
+    const interval = window.setInterval(() => {
+      void syncOrders({ showRefreshing: false });
+    }, 4000);
 
     return () => {
-      isMounted = false;
+      isMountedRef.current = false;
+      ordersRequestRef.current?.abort();
+      window.clearTimeout(initialLoad);
       window.clearInterval(interval);
     };
   }, []);

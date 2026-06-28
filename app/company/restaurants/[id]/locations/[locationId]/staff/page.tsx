@@ -38,7 +38,11 @@ export default async function CompanyRestaurantLocationStaffPage(
       eyebrow="Company"
       title={`${location.name} staff`}
       description={`Manage staff access for ${restaurant.name}.`}
-      user={{ name: session.user.name, role: session.user.role }}
+      user={{
+        name: session.user.name,
+        organizationId: session.user.organizationId,
+        role: session.user.role,
+      }}
     >
       <LocationStaffPanel
         backHref={`/company/restaurants/${restaurant.id}/locations`}

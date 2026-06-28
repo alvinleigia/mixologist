@@ -195,7 +195,7 @@ export function OrganizationEditPanel({
                   />
                 </FormField>
                 <div className="grid gap-4 md:grid-cols-2">
-                  <FormField label="QR / menu slug">
+                  <FormField label="QR slug">
                     <Input
                       placeholder="main-bar"
                       value={draft.location.qrSlug}

@@ -1,7 +1,10 @@
 import { AppHeader } from "@/components/shared/AppHeader";
+import { CommercialAccessBlocked } from "@/components/admin/CommercialAccessBlocked";
 import { LocationSwitcher } from "@/components/admin/LocationSwitcher";
 import { AppShell } from "@/components/shared/AppShell";
 import { SectionHeader } from "@/components/shared/SectionHeader";
+import { getTenantSubscriptionAccess } from "@/lib/billing";
+import { canAccessRole, platformAdminRoles } from "@/lib/role-access";
 import type { MembershipRole } from "@/lib/staff-auth";
 
 type AdminRoute = {
@@ -18,6 +21,7 @@ type SaasAdminShellProps = {
   description: string;
   user: {
     name?: string | null;
+    organizationId?: string | null;
     role: MembershipRole;
   };
 };
@@ -39,13 +43,23 @@ const adminRoutes: AdminRoute[] = [
     description: "Manage settings, locations and staff.",
   },
   {
-    href: "/staff",
-    label: "Operations",
-    description: "Orders and menu operations.",
+    href: "/operations/orders",
+    label: "Orders",
+    description: "Live order operations.",
+  },
+  {
+    href: "/operations/menu",
+    label: "Menu Manager",
+    description: "Categories and products.",
+  },
+  {
+    href: "/operations/inventory",
+    label: "Inventory",
+    description: "Stock control.",
   },
 ];
 
-export function SaasAdminShell({
+export async function SaasAdminShell({
   activePath,
   children,
   description,
@@ -53,9 +67,18 @@ export function SaasAdminShell({
   title,
   user,
 }: SaasAdminShellProps) {
+  const commercialAccess =
+    user.organizationId && !canAccessRole(user.role, platformAdminRoles)
+      ? await getTenantSubscriptionAccess(user.organizationId)
+      : { allowed: true, status: null };
+
   return (
     <AppShell variant="dark" contentClassName="max-w-7xl">
-      <AppHeader activePath={activePath} navigationItems={adminRoutes} user={user} />
+      <AppHeader
+        activePath={activePath}
+        navigationItems={adminRoutes}
+        user={{ name: user.name, role: user.role }}
+      />
       <div className="mb-6 flex justify-end">
         <LocationSwitcher />
       </div>
@@ -67,7 +90,11 @@ export function SaasAdminShell({
           description={description}
           className="mb-6"
         />
-        {children}
+        {commercialAccess.allowed ? (
+          children
+        ) : (
+          <CommercialAccessBlocked status={commercialAccess.status} />
+        )}
       </section>
     </AppShell>
   );

@@ -10,6 +10,10 @@ export type MenuItemRecord = {
   imageUrl: string | null;
   sortOrder: number;
   isActive: boolean;
+  isSoldOut: boolean;
+  inventoryStatus?: "not_tracked" | "out" | "low" | "ok";
+  inventoryQuantity?: string | null;
+  isUnavailableDueToStock?: boolean;
 };
 
 export type MenuCategoryRecord = {

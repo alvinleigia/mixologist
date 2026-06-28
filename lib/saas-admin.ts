@@ -1,7 +1,15 @@
 import { and, eq, ne } from "drizzle-orm";
 
 import { getDb } from "@/db";
-import { locations, memberships, organizations, users } from "@/db/schema";
+import {
+  locations,
+  memberships,
+  organizationSubscriptions,
+  organizations,
+  saasPlans,
+  users,
+} from "@/db/schema";
+import { getStarterPlanId, getTrialEndDate } from "@/lib/billing";
 import { hashPassword } from "@/lib/passwords";
 import { slugify } from "@/lib/slugs";
 import {
@@ -64,15 +72,49 @@ async function ensureUniqueLocationSlug(organizationId: string, baseName: string
 }
 
 export async function listPlatformCompanies() {
-  return getDb()
-    .select()
+  const rows = await getDb()
+    .select({
+      company: organizations,
+      subscription: organizationSubscriptions,
+      plan: saasPlans,
+    })
     .from(organizations)
+    .leftJoin(
+      organizationSubscriptions,
+      eq(organizationSubscriptions.organizationId, organizations.id),
+    )
+    .leftJoin(saasPlans, eq(saasPlans.id, organizationSubscriptions.planId))
     .where(
       and(
         eq(organizations.type, "COMPANY"),
         ne(organizations.id, DEFAULT_COMPANY_ORGANIZATION_ID),
       ),
     );
+
+  return rows.map((row) => ({
+    ...row.company,
+    subscription: row.subscription
+      ? {
+          id: row.subscription.id,
+          status: row.subscription.status,
+          trialEndsAt: row.subscription.trialEndsAt?.toISOString() ?? null,
+          currentPeriodEndsAt:
+            row.subscription.currentPeriodEndsAt?.toISOString() ?? null,
+          plan: row.plan
+            ? {
+                name: row.plan.name,
+                slug: row.plan.slug,
+                monthlyPrice: row.plan.monthlyPrice,
+                maxRestaurants: row.plan.maxRestaurants,
+                maxLocations: row.plan.maxLocations,
+                maxUsers: row.plan.maxUsers,
+                maxMonthlyOrders: row.plan.maxMonthlyOrders,
+                storageMb: row.plan.storageMb,
+              }
+            : null,
+        }
+      : null,
+  }));
 }
 
 export async function getPlatformCompany(companyOrganizationId: string) {
@@ -95,20 +137,34 @@ export async function createCompanyOrganization(input: unknown) {
   const parsed = createCompanyOrganizationSchema.parse(input);
   const db = getDb();
   const slug = await ensureUniqueOrganizationSlug(parsed.name);
-  const [company] = await db
-    .insert(organizations)
-    .values({
-      type: "COMPANY",
-      slug,
-      name: parsed.name,
-      timezone: parsed.timezone,
-      currency: parsed.currency.toUpperCase(),
-      isActive: true,
-      updatedAt: new Date(),
-    })
-    .returning();
+  const starterPlanId = await getStarterPlanId();
+  const trialEndsAt = getTrialEndDate();
 
-  return company;
+  return db.transaction(async (tx) => {
+    const [company] = await tx
+      .insert(organizations)
+      .values({
+        type: "COMPANY",
+        slug,
+        name: parsed.name,
+        timezone: parsed.timezone,
+        currency: parsed.currency.toUpperCase(),
+        isActive: true,
+        updatedAt: new Date(),
+      })
+      .returning();
+
+    await tx.insert(organizationSubscriptions).values({
+      organizationId: company.id,
+      planId: starterPlanId,
+      status: "TRIALING",
+      trialEndsAt,
+      currentPeriodEndsAt: trialEndsAt,
+      updatedAt: new Date(),
+    });
+
+    return company;
+  });
 }
 
 export async function updateOrganizationAdmin(

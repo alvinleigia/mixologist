@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ZodError } from "zod";
 
 import { requireRole } from "@/lib/auth";
+import { writeAuditLog } from "@/lib/audit-log";
 import {
   getTenantAdminSnapshot,
   updateStaffMembership,
@@ -37,6 +38,20 @@ export async function PATCH(
     if (!membership) {
       return NextResponse.json({ error: "Staff membership not found." }, { status: 404 });
     }
+
+    await writeAuditLog({
+      actor: session.user,
+      organizationId: tenantContext.organizationId,
+      locationId: membership.locationId,
+      action: "restaurant.staff.update",
+      entityType: "membership",
+      entityId: membership.id,
+      metadata: {
+        userId: membership.userId,
+        role: membership.role,
+        isActive: membership.isActive,
+      },
+    });
 
     return NextResponse.json(await getTenantAdminSnapshot(tenantContext));
   } catch (error) {

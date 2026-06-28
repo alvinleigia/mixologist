@@ -40,7 +40,11 @@ export function getHomePathForRole(role: MembershipRole) {
     return "/restaurant";
   }
 
-  return "/staff";
+  if (role === "ORDER_OPERATOR") {
+    return "/operations/orders";
+  }
+
+  return "/operations/orders";
 }
 
 export function canAccessNavigationPath(role: MembershipRole, href: string) {
@@ -56,8 +60,16 @@ export function canAccessNavigationPath(role: MembershipRole, href: string) {
     return role === "RESTAURANT_MANAGER";
   }
 
-  if (href === "/staff") {
+  if (href === "/operations/orders") {
     return role === "RESTAURANT_MANAGER" || role === "ORDER_OPERATOR";
+  }
+
+  if (href === "/operations/menu") {
+    return role === "RESTAURANT_MANAGER";
+  }
+
+  if (href === "/operations/inventory") {
+    return role === "RESTAURANT_MANAGER";
   }
 
   return true;

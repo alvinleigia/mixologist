@@ -4,6 +4,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/db";
 import { orderItems, orders } from "@/db/schema";
 import { requireStaffSession } from "@/lib/auth";
+import { writeAuditLog } from "@/lib/audit-log";
+import { deductInventoryForDeliveredItem } from "@/lib/inventory";
 import { getCurrentTenantContext } from "@/lib/tenant-context";
 
 type ItemAction = "start" | "ready" | "announce" | "deliver" | "cancel";
@@ -128,6 +130,23 @@ export async function POST(
           ),
         );
 
+      await writeAuditLog({
+        actor: session.user,
+        organizationId: tenantContext.organizationId,
+        locationId: tenantContext.locationId,
+        action: "order.item.announce",
+        entityType: "order_item",
+        entityId: item.id,
+        metadata: {
+          orderId: order.id,
+          orderNo: order.orderNo,
+          drinkName: item.drinkName,
+          quantity: item.quantity,
+          previousStatus: item.status,
+          nextStatus: item.status,
+        },
+      });
+
       return NextResponse.json({
         orderId: order.id,
         orderStatus: order.status,
@@ -174,6 +193,10 @@ export async function POST(
           ),
         )
         .returning();
+
+      if (body.action === "deliver") {
+        await deductInventoryForDeliveredItem(tx, tenantContext, item);
+      }
 
       const currentItems = await tx
         .select()
@@ -235,6 +258,24 @@ export async function POST(
         .returning();
 
       return { updatedItem, updatedOrder };
+    });
+
+    await writeAuditLog({
+      actor: session.user,
+      organizationId: tenantContext.organizationId,
+      locationId: tenantContext.locationId,
+      action: `order.item.${body.action}`,
+      entityType: "order_item",
+      entityId: result.updatedItem.id,
+      metadata: {
+        orderId: result.updatedOrder.id,
+        orderNo: result.updatedOrder.orderNo,
+        drinkName: result.updatedItem.drinkName,
+        quantity: result.updatedItem.quantity,
+        previousStatus: item.status,
+        nextStatus: result.updatedItem.status,
+        orderStatus: result.updatedOrder.status,
+      },
     });
 
     return NextResponse.json({

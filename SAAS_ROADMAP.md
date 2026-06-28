@@ -37,6 +37,13 @@ The future app must support:
 - Parent companies viewing summary reports across child restaurants.
 - Restaurant/location dashboards for local reporting.
 
+## UI Standards
+
+- Primary cross-route navigation must live in the global `AppHeader` account dropdown.
+- Avoid duplicate page-level route switchers for shared modules such as Operations Orders and Menu Manager.
+- Page-level buttons should be action-specific only, such as add, edit, invite, save, cancel or clear.
+- Reuse shadcn/Tailwind components from `components/ui` and shared app wrappers before adding one-off UI.
+
 ## Phase 1: Core SaaS Data Model
 
 Status: Foundation implemented; move to Phase 2 next. Inventory scope is intentionally deferred until the inventory module exists.
@@ -53,7 +60,7 @@ Tasks:
 - [x] Add `organizationId` and `locationId` to operational records for menu categories, menu items, orders and order items.
 - [x] Scope menu categories/items by organization and location through `lib/menu.ts` and menu API routes.
 - [x] Scope orders and order items by organization and location through `lib/orders.ts` and order API routes.
-- [ ] Scope inventory by organization and location. Deferred because the inventory module/table has not been created yet.
+- [x] Scope inventory by organization and location.
 - [x] Add tenant-aware indexes for common queries.
 - [x] Create migration file `drizzle/0003_saas_core_tenant_foundation.sql`.
 - [x] Backfill existing MVP records into a hidden default company, restaurant and location in the migration.
@@ -73,7 +80,7 @@ Implementation notes:
 - Temporary Phase 1 tenant resolver is in `lib/tenant-context.ts`; it returns the default restaurant/location until Phase 2 auth memberships are implemented.
 - Supabase migration `0003_saas_core_tenant_foundation.sql` has been applied.
 - Tenant foundation verification passed with `npm run db:verify:tenant`.
-- Do not create placeholder inventory tables during Phase 1. Inventory should be designed later as a real module, then scoped by `organizationId` and `locationId`.
+- Inventory is now designed as a Phase 4 module and scoped by `organizationId` and `locationId`.
 - Next recommended implementation step is Phase 2: replace environment-based staff login with database-backed users, roles, memberships and tenant/location access checks.
 
 ## Phase 2: Auth, Roles And Access Control
@@ -178,21 +185,48 @@ Implementation notes:
 
 ## Phase 4: Operational Modules
 
-Status: Partially started in MVP, not tenant-aware
+Status: Complete for the current MVP scope. Customer QR/location ordering, location-scoped menu/order operations, item-level order workflow, daily location order numbers, inventory tracking and stock safeguards are in place.
 
 Goal: Convert current POS functionality into tenant-aware, reusable modules.
 
 Tasks:
 
-- [ ] Refactor current menu manager into tenant/location-aware module.
-- [ ] Refactor order board into location-aware module.
-- [ ] Refactor customer order page to load by location QR/link.
-- [ ] Add QR/menu links per location.
-- [ ] Add inventory module per restaurant/location.
-- [ ] Support out-of-stock or hidden products by location.
-- [ ] Decide order numbering strategy: global, tenant, location, or daily location sequence.
-- [ ] Keep item-level order status workflow.
-- [ ] Add reusable components for order item rows across customer and staff views.
+- [x] Refactor current menu manager into tenant/location-aware module.
+- [x] Refactor order board into location-aware module.
+- [x] Refactor customer order page to load by location QR/link.
+- [x] Add QR/menu links per location.
+- [x] Add inventory module per restaurant/location.
+- [x] Deduct tracked inventory when order items are marked delivered.
+- [x] Block public ordering for tracked products with insufficient stock.
+- [x] Support out-of-stock or hidden products by location.
+- [x] Decide order numbering strategy: daily location sequence.
+- [x] Keep item-level order status workflow.
+- [x] Add reusable components for order item rows across customer and staff views.
+
+Implementation notes:
+
+- Public customer ordering supports location QR links using `/order?qr=...`.
+- Customer order status supports `/order/status?qr=...` and preserves QR context from the order flow.
+- Public menu, order creation, customer order status and customer cancellation resolve tenant/location from QR slug for anonymous customers.
+- Staff order board and menu manager continue to resolve tenant/location from authenticated membership/session context.
+- Location QR slugs are globally unique through the database unique index and save-time server validation.
+- `/restaurant/location` now has a live QR slug availability check before saving.
+- Existing orders placed before QR routing may belong to the hidden default tenant and will not appear in real restaurant/location staff panels.
+- Menu items support `isSoldOut`; public ordering hides/disables sold-out products and menu manager can toggle stock state.
+- Inventory is available at `/operations/inventory` for restaurant managers and stores stock per restaurant/location/menu product.
+- Migration `drizzle/0009_inventory_items.sql` adds the `inventory_items` table.
+- Managers can save quantity, low-stock threshold, unit, tracking state and notes per product.
+- Tracked inventory is deducted when an order item is marked delivered; untracked products are ignored.
+- Full-order cancellation now also closes child item rows so reporting and inventory assumptions stay aligned.
+- Shared order item row UI now lives in `components/shared/OrderLineItemRow.tsx` and is used by staff and customer order status views.
+- Order numbers now use a per-organization, per-location, per-business-date sequence instead of one global platform sequence.
+- Migration `drizzle/0010_location_daily_order_numbers.sql` adds `orders.order_date`, removes the global `order_no` uniqueness constraint, and creates the scoped unique index.
+- `lib/order-number.ts` assigns numbers inside the order creation transaction with a Postgres advisory lock for the location/day.
+- Shared order display formatting now lives in `lib/order-display.ts` and is used by customer and staff order cards.
+- Public menus include tracked inventory availability for each product.
+- Customer ordering shows low-stock badges, disables tracked zero-stock products, and the order API rejects insufficient tracked stock server-side.
+- Inventory manager includes admin-facing summary cards for tracked, low-stock, out-of-stock and untracked products.
+- Phase 4 can now move into Phase 5 reporting and company dashboards.
 
 Current refactor candidates:
 
@@ -204,72 +238,118 @@ Current refactor candidates:
 
 ## Phase 5: Reporting And Company Dashboards
 
-Status: Not started
+Status: Complete for the current MVP scope. Scoped report service and dashboard panels are implemented for company and restaurant admin views; period filtering, timing, cancellation, revenue and CSV export are in place.
 
 Goal: Give parent companies and restaurants visibility into performance.
 
 Tasks:
 
-- [ ] Parent company summary across all child restaurants.
-- [ ] Restaurant-level reports.
-- [ ] Location-level reports.
-- [ ] Orders by date, status, drink, category, location and staff member.
-- [ ] Prep time and collection/delivery time reports.
-- [ ] Cancelled/refused item reports.
-- [ ] Top products and low-performing products.
-- [ ] Revenue/price reports once pricing is reliable.
-- [ ] CSV export.
+- [x] Parent company summary across all child restaurants.
+- [x] Restaurant-level reports.
+- [x] Location-level reports.
+- [x] Orders by date, status, drink, category, location and staff member.
+- [x] Prep time and collection/delivery time reports.
+- [x] Cancelled/refused item reports.
+- [x] Top products and low-performing products.
+- [x] Revenue/price reports once pricing is reliable.
+- [x] CSV export.
 - [ ] Later: PDF export.
 
 Important:
 
 - Reporting should read from tenant-scoped views or service functions, not raw unscoped queries.
 
+Implementation notes:
+
+- Shared reporting service lives in `lib/saas-reports.ts`.
+- Company summary API returns scoped operational reports for child restaurants.
+- Restaurant summary API returns scoped operational reports for the active restaurant context.
+- `components/admin/OperationalReports.tsx` renders reusable report panels for order status, top products, location activity and stock alerts.
+- First report slice includes all-time/today status counts, location order activity, top products by quantity and low/out-of-stock alerts.
+- Report APIs accept `?range=today|7d|30d|all`.
+- Company and restaurant dashboards share report range controls.
+- Reports now include selected-period order status, top products, category mix, staff activity and location activity.
+- Reports now include average item prep time, average collection time and cancelled item breakdowns for the selected period.
+- Revenue reports use priced, non-cancelled item rows only and separately show unpriced rows.
+- CSV export endpoints are available at `/api/company/reports/export?range=...` and `/api/tenant/reports/export?range=...`.
+
 ## Phase 6: SaaS Commercial Layer
 
-Status: Not started
+Status: MVP complete. Commercial data model, seeded plans, trial subscriptions, platform commercial metrics, subscription status controls, suspended tenant handling, data export and protected account deletion are in place.
 
 Goal: Add subscription and onboarding capability once product structure is stable.
 
 Tasks:
 
 - [ ] Tenant onboarding flow.
-- [ ] Plans and billing.
-- [ ] Usage limits for restaurants, locations, users, orders and storage.
-- [ ] Trial accounts.
-- [ ] Subscription status handling.
-- [ ] Suspended tenant handling.
-- [ ] Platform-level SaaS metrics.
-- [ ] Data export and account deletion workflows.
+- [x] Plans and billing.
+- [x] Usage limits for restaurants, locations, users, orders and storage.
+- [x] Trial accounts.
+- [x] Subscription status handling.
+- [x] Suspended tenant handling.
+- [x] Platform-level SaaS metrics.
+- [x] Data export and account deletion workflows.
+
+Implementation notes:
+
+- Migration `drizzle/0011_saas_commercial_foundation.sql` adds `saas_plans`, `organization_subscriptions` and `subscription_status`.
+- Starter, Growth and Group plans are seeded by migration.
+- Existing real company tenants are backfilled onto Starter trial subscriptions.
+- New company tenants automatically receive a 14-day Starter trial subscription.
+- Platform summary now includes active plans, trialing companies, active subscriptions, suspended subscriptions, cancelled subscriptions and current-month order volume.
+- Platform company cards show subscription status, trial end date and plan limits.
+- SaaS owner can mark subscriptions active, suspended or cancelled from the platform company actions menu.
+- Suspended/cancelled tenants are blocked at login, shared role guards, tenant context resolution, public QR ordering/status, admin shells and operations pages.
+- SaaS owner can export company tenant data as JSON from the platform company actions menu.
+- SaaS owner can delete a company tenant only after typing `DELETE`; deletion cascades child restaurants, locations, staff assignments, menus, inventory and orders.
+- Payment provider checkout, invoices and hosted billing portal are deferred until real subscription collection is needed.
 
 ## Phase 7: Scale, Security And Reliability
 
-Status: Not started
+Status: MVP complete for the current app layer. Database-backed audit logs, scoped audit APIs, CSV export, dashboard viewing panels, in-memory rate limiting, structured server logging and polling overlap protection are implemented. Production infrastructure items are tracked separately under Production TODOs.
 
 Goal: Make the platform production-ready for multiple customers and heavier usage.
 
 Tasks:
 
-- [ ] Add strict server-side tenant guards everywhere.
-- [ ] Consider Supabase Row Level Security as defense in depth.
-- [ ] Add audit logs for admin, user, menu and order changes.
-- [ ] Replace constant polling with Supabase Realtime or adaptive polling.
-- [ ] Add request cancellation/locking to prevent overlapping polling calls.
-- [ ] Add rate limiting.
-- [ ] Add structured error logging.
+- [x] Add strict server-side tenant guards to current protected routes and APIs.
+- [x] Add audit logs for admin, user, menu and order changes.
+- [x] Add request cancellation/locking to prevent overlapping polling calls.
+- [x] Add rate limiting. MVP in-memory limiting is implemented for public order/customer/invite flows and credential attempts.
+- [x] Add structured error logging foundation.
+
+Implementation notes:
+
+- Migration `drizzle/0012_audit_logs.sql` adds `audit_logs` with actor, tenant, location, action, entity and JSON metadata fields.
+- Shared audit writer lives in `lib/audit-log.ts`; it writes structured audit rows and logs JSON server errors if audit persistence fails.
+- Current audit coverage includes platform company create/update/export/delete, subscription status changes, platform-created company staff invitations, company-created restaurant/location changes and company-created staff invitations.
+- Restaurant operational audit coverage includes organization/location settings, direct staff create/update, restaurant staff invitations, menu category/item changes, item sold-out toggles, inventory saves, full-order transitions, item-level transitions, announcements and cancellations.
+- Scoped audit APIs are available at `/api/audit-logs` and `/api/audit-logs/export`.
+- `components/admin/AuditLogPanel.tsx` renders recent scoped audit logs and CSV export links on Platform, Company and Restaurant dashboards.
+- Shared MVP rate limiter lives in `lib/rate-limit.ts`.
+- Current rate limiting covers public order creation, customer order status polling, customer cancellation, invitation acceptance and credential attempts.
+- The current limiter is in-memory per server instance; before serious production traffic, replace the backing store with Redis/Upstash or another shared rate limit store.
+- Shared structured logging foundation lives in `lib/logger.ts`; `lib/audit-log.ts` uses it for audit persistence failures.
+- Staff order board polling and customer order status polling now abort stale requests before starting the next sync, preventing overlapping refresh calls and stale response wins.
+
+Production TODOs:
+
+- [ ] Consider Supabase Row Level Security as defense in depth before production launch.
+- [ ] Replace constant polling with Supabase Realtime or adaptive polling before heavier production traffic.
+- [ ] Replace in-memory rate limiting with Redis/Upstash or another shared rate limit store.
 - [ ] Add automated tests for tenant isolation and order transitions.
-- [ ] Add backups and restore plan.
-- [ ] Add tenant-scoped image uploads and storage limits.
+- [ ] Add backups and restore plan before production launch.
+- [ ] Add tenant-scoped image uploads and storage limits when image upload storage is introduced.
 
 ## Recommended Immediate Next Step
 
-Continue Phase 3 with audit logs and access tests.
+Move into Phase 8 or start UAT hardening, depending on whether the next priority is new product capability or stabilizing the current SaaS flow.
 
 Implementation order:
 
-1. Add audit logs for tenant and staff management actions.
-2. Add automated tests for tenant isolation and location switching.
-3. Add optional email delivery for invitation links when SMTP/provider details are available.
+1. Run UAT against the platform, company, restaurant, operations and public QR order flows.
+2. Add automated tests for tenant isolation and order transitions.
+3. Choose production providers for Redis-backed rate limiting, backups, email delivery and tenant-scoped storage.
 
 ## Notes For Future Chat Sessions
 

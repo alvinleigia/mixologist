@@ -1,10 +1,11 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 
 import { drinkCategories } from "@/data/drinks";
 import { getDb } from "@/db";
-import { menuCategories, menuItems } from "@/db/schema";
+import { inventoryItems, menuCategories, menuItems } from "@/db/schema";
 import { getDefaultTenantContext, TenantContext } from "@/lib/tenant-context";
 import { MenuCategoryRecord } from "@/types/menu";
+import type { MenuItemRecord } from "@/types/menu";
 
 const defaultMenuSeed = drinkCategories.map((category, categoryIndex) => ({
   slug: category.id,
@@ -20,6 +21,7 @@ const defaultMenuSeed = drinkCategories.map((category, categoryIndex) => ({
     imageUrl: null,
     sortOrder: drinkIndex,
     isActive: drink.isActive,
+    isSoldOut: false,
   })),
 }));
 
@@ -58,7 +60,7 @@ async function ensureUniqueSlug(
   }
 }
 
-export async function ensureMenuSeeded(context: TenantContext = getDefaultTenantContext()) {
+export async function seedStarterMenu(context: TenantContext = getDefaultTenantContext()) {
   const db = getDb();
   const [existingCategory] = await db
     .select({ id: menuCategories.id })
@@ -72,16 +74,24 @@ export async function ensureMenuSeeded(context: TenantContext = getDefaultTenant
     .limit(1);
 
   if (existingCategory) {
-    return;
+    return {
+      createdCategories: 0,
+      createdItems: 0,
+      skipped: true,
+    };
   }
 
+  let createdCategories = 0;
+  let createdItems = 0;
+
   for (const category of defaultMenuSeed) {
+    const categorySlug = await ensureUniqueSlug(menuCategories, category.slug);
     const [createdCategory] = await db
       .insert(menuCategories)
       .values({
         organizationId: context.organizationId,
         locationId: context.locationId,
-        slug: category.slug,
+        slug: categorySlug,
         name: category.name,
         description: category.description,
         sortOrder: category.sortOrder,
@@ -93,29 +103,71 @@ export async function ensureMenuSeeded(context: TenantContext = getDefaultTenant
       continue;
     }
 
+    createdCategories += 1;
+
     if (category.items.length > 0) {
-      await db.insert(menuItems).values(
-        category.items.map((item) => ({
+      const seededItems = [];
+
+      for (const item of category.items) {
+        seededItems.push({
           organizationId: context.organizationId,
           locationId: context.locationId,
           categoryId: createdCategory.id,
-          slug: item.slug,
+          slug: await ensureUniqueSlug(menuItems, item.slug),
           name: item.name,
           description: item.description,
           price: item.price,
           imageUrl: item.imageUrl,
           sortOrder: item.sortOrder,
           isActive: item.isActive,
-        })),
-      );
+          isSoldOut: item.isSoldOut,
+        });
+      }
+
+      await db.insert(menuItems).values(seededItems);
+      createdItems += seededItems.length;
     }
   }
+
+  return {
+    createdCategories,
+    createdItems,
+    skipped: false,
+  };
+}
+
+export async function clearMenu(context: TenantContext = getDefaultTenantContext()) {
+  const db = getDb();
+  const deletedItems = await db
+    .delete(menuItems)
+    .where(
+      and(
+        eq(menuItems.organizationId, context.organizationId),
+        eq(menuItems.locationId, context.locationId),
+      ),
+    )
+    .returning({ id: menuItems.id });
+  const deletedCategories = await db
+    .delete(menuCategories)
+    .where(
+      and(
+        eq(menuCategories.organizationId, context.organizationId),
+        eq(menuCategories.locationId, context.locationId),
+      ),
+    )
+    .returning({ id: menuCategories.id });
+
+  return {
+    deletedCategories: deletedCategories.length,
+    deletedItems: deletedItems.length,
+  };
 }
 
 function groupMenuData(
   categories: typeof menuCategories.$inferSelect[],
   items: typeof menuItems.$inferSelect[],
   includeInactive: boolean,
+  inventoryByItemId = new Map<string, typeof inventoryItems.$inferSelect>(),
 ) {
   const categoryMap = new Map<string, MenuCategoryRecord>();
 
@@ -160,6 +212,8 @@ function groupMenuData(
       imageUrl: item.imageUrl,
       sortOrder: item.sortOrder,
       isActive: item.isActive,
+      isSoldOut: item.isSoldOut,
+      ...getMenuInventoryState(inventoryByItemId.get(item.id)),
     });
   }
 
@@ -184,8 +238,55 @@ function groupMenuData(
     });
 }
 
+function getMenuInventoryState(inventory: typeof inventoryItems.$inferSelect | undefined) {
+  if (!inventory?.isTracked) {
+    return {
+      inventoryStatus: "not_tracked" as const,
+      inventoryQuantity: inventory?.currentQuantity ?? null,
+      isUnavailableDueToStock: false,
+    };
+  }
+
+  const currentQuantity = Number(inventory.currentQuantity);
+  const lowStockThreshold = Number(inventory.lowStockThreshold);
+  const inventoryStatus: NonNullable<MenuItemRecord["inventoryStatus"]> =
+    currentQuantity <= 0
+      ? "out"
+      : lowStockThreshold > 0 && currentQuantity <= lowStockThreshold
+        ? "low"
+        : "ok";
+
+  return {
+    inventoryStatus,
+    inventoryQuantity: inventory.currentQuantity,
+    isUnavailableDueToStock: inventoryStatus === "out",
+  };
+}
+
+async function getInventoryByMenuItemId(
+  itemIds: string[],
+  context: TenantContext,
+) {
+  if (itemIds.length === 0) {
+    return new Map<string, typeof inventoryItems.$inferSelect>();
+  }
+
+  const db = getDb();
+  const inventory = await db
+    .select()
+    .from(inventoryItems)
+    .where(
+      and(
+        inArray(inventoryItems.menuItemId, itemIds),
+        eq(inventoryItems.organizationId, context.organizationId),
+        eq(inventoryItems.locationId, context.locationId),
+      ),
+    );
+
+  return new Map(inventory.map((item) => [item.menuItemId, item]));
+}
+
 export async function getPublicMenu(context: TenantContext = getDefaultTenantContext()) {
-  await ensureMenuSeeded(context);
   const db = getDb();
   const categories = await db
     .select()
@@ -207,12 +308,15 @@ export async function getPublicMenu(context: TenantContext = getDefaultTenantCon
       ),
     )
     .orderBy(asc(menuItems.sortOrder), asc(menuItems.name));
+  const inventoryByItemId = await getInventoryByMenuItemId(
+    items.map((item) => item.id),
+    context,
+  );
 
-  return groupMenuData(categories, items, false);
+  return groupMenuData(categories, items, false, inventoryByItemId);
 }
 
 export async function getAdminMenu(context: TenantContext = getDefaultTenantContext()) {
-  await ensureMenuSeeded(context);
   const db = getDb();
   const categories = await db
     .select()
@@ -243,7 +347,6 @@ export async function getMenuSelectionSnapshot(
   itemId: string,
   context: TenantContext = getDefaultTenantContext(),
 ) {
-  await ensureMenuSeeded(context);
   const db = getDb();
 
   const [category] = await db
@@ -273,11 +376,28 @@ export async function getMenuSelectionSnapshot(
         eq(menuItems.locationId, context.locationId),
         eq(menuItems.categoryId, category.id),
         eq(menuItems.isActive, true),
+        eq(menuItems.isSoldOut, false),
       ),
     )
     .limit(1);
 
-  return { category, item: item ?? null };
+  if (!item) {
+    return { category, inventory: null, item: null };
+  }
+
+  const [inventory] = await db
+    .select()
+    .from(inventoryItems)
+    .where(
+      and(
+        eq(inventoryItems.menuItemId, item.id),
+        eq(inventoryItems.organizationId, context.organizationId),
+        eq(inventoryItems.locationId, context.locationId),
+      ),
+    )
+    .limit(1);
+
+  return { category, inventory: inventory ?? null, item };
 }
 
 export async function createMenuCategory(input: {
@@ -286,7 +406,6 @@ export async function createMenuCategory(input: {
   sortOrder: number;
   isActive: boolean;
 }, context: TenantContext = getDefaultTenantContext()) {
-  await ensureMenuSeeded(context);
   const db = getDb();
   const slug = await ensureUniqueSlug(menuCategories, input.name);
 
@@ -317,7 +436,6 @@ export async function updateMenuCategory(
   },
   context: TenantContext = getDefaultTenantContext(),
 ) {
-  await ensureMenuSeeded(context);
   const db = getDb();
   const slug = await ensureUniqueSlug(menuCategories, input.name, categoryId);
 
@@ -351,8 +469,8 @@ export async function createMenuItem(input: {
   imageUrl?: string | null;
   sortOrder: number;
   isActive: boolean;
+  isSoldOut?: boolean;
 }, context: TenantContext = getDefaultTenantContext()) {
-  await ensureMenuSeeded(context);
   const db = getDb();
   const [category] = await db
     .select({ id: menuCategories.id })
@@ -385,6 +503,7 @@ export async function createMenuItem(input: {
       imageUrl: input.imageUrl ?? null,
       sortOrder: input.sortOrder,
       isActive: input.isActive,
+      isSoldOut: input.isSoldOut ?? false,
       updatedAt: new Date(),
     })
     .returning();
@@ -402,10 +521,10 @@ export async function updateMenuItem(
     imageUrl?: string | null;
     sortOrder: number;
     isActive: boolean;
+    isSoldOut?: boolean;
   },
   context: TenantContext = getDefaultTenantContext(),
 ) {
-  await ensureMenuSeeded(context);
   const db = getDb();
   const [category] = await db
     .select({ id: menuCategories.id })
@@ -438,6 +557,32 @@ export async function updateMenuItem(
       imageUrl: input.imageUrl ?? null,
       sortOrder: input.sortOrder,
       isActive: input.isActive,
+      isSoldOut: input.isSoldOut ?? false,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(menuItems.id, itemId),
+        eq(menuItems.organizationId, context.organizationId),
+        eq(menuItems.locationId, context.locationId),
+      ),
+    )
+    .returning();
+
+  return updatedItem ?? null;
+}
+
+export async function updateMenuItemSoldOut(
+  itemId: string,
+  isSoldOut: boolean,
+  context: TenantContext = getDefaultTenantContext(),
+) {
+  const db = getDb();
+
+  const [updatedItem] = await db
+    .update(menuItems)
+    .set({
+      isSoldOut,
       updatedAt: new Date(),
     })
     .where(
@@ -473,6 +618,7 @@ type MenuExportRow = {
   itemImageUrl: string;
   itemSortOrder: number;
   itemActive: boolean;
+  itemSoldOut: boolean;
 };
 
 function escapeCsvValue(value: string | number | boolean | null | undefined) {
@@ -568,6 +714,7 @@ export async function exportMenuCsv(context: TenantContext = getDefaultTenantCon
     "item_image_url",
     "item_sort_order",
     "item_active",
+    "item_sold_out",
   ];
 
   const rows: MenuExportRow[] = [];
@@ -587,6 +734,7 @@ export async function exportMenuCsv(context: TenantContext = getDefaultTenantCon
         itemImageUrl: "",
         itemSortOrder: 0,
         itemActive: true,
+        itemSoldOut: false,
       });
       continue;
     }
@@ -605,6 +753,7 @@ export async function exportMenuCsv(context: TenantContext = getDefaultTenantCon
         itemImageUrl: item.imageUrl ?? "",
         itemSortOrder: item.sortOrder,
         itemActive: item.isActive,
+        itemSoldOut: item.isSoldOut,
       });
     }
   }
@@ -623,6 +772,7 @@ export async function exportMenuCsv(context: TenantContext = getDefaultTenantCon
       row.itemImageUrl,
       row.itemSortOrder,
       row.itemActive,
+      row.itemSoldOut,
     ]
       .map(escapeCsvValue)
       .join(","),
@@ -635,7 +785,6 @@ export async function importMenuCsv(
   csvText: string,
   context: TenantContext = getDefaultTenantContext(),
 ) {
-  await ensureMenuSeeded(context);
   const db = getDb();
   const lines = csvText
     .split(/\r?\n/)
@@ -667,6 +816,7 @@ export async function importMenuCsv(
   const itemImageUrlIndex = headers.indexOf("item_image_url");
   const itemSortOrderIndex = headers.indexOf("item_sort_order");
   const itemActiveIndex = headers.indexOf("item_active");
+  const itemSoldOutIndex = headers.indexOf("item_sold_out");
 
   const existingCategories = await db
     .select()
@@ -755,6 +905,7 @@ export async function importMenuCsv(
     const itemImageUrl = normalizeText(values[itemImageUrlIndex]);
     const itemSortOrder = normalizeInteger(values[itemSortOrderIndex], 0);
     const itemActive = normalizeBoolean(values[itemActiveIndex], true);
+    const itemSoldOut = normalizeBoolean(values[itemSoldOutIndex], false);
 
     const existingItem =
       existingItems.find((item) => item.slug === itemSlug) ??
@@ -773,6 +924,7 @@ export async function importMenuCsv(
         imageUrl: itemImageUrl,
         sortOrder: itemSortOrder,
         isActive: itemActive,
+        isSoldOut: itemSoldOut,
       }, context);
       existingItems.push(createdItem);
       createdItems += 1;
@@ -787,6 +939,7 @@ export async function importMenuCsv(
           imageUrl: itemImageUrl,
           sortOrder: itemSortOrder,
           isActive: itemActive,
+          isSoldOut: itemSoldOut,
         },
         context,
       );

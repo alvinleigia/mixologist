@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { MoreHorizontalIcon } from "lucide-react";
 
+import { OperationalReports } from "@/components/admin/OperationalReports";
+import { SummaryCards } from "@/components/admin/SummaryCards";
 import { SectionHeader } from "@/components/shared/SectionHeader";
 import { Spinner } from "@/components/shared/Spinner";
 import { Button } from "@/components/ui/button";
@@ -15,6 +17,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import type { OperationalReport, ReportRange } from "@/lib/saas-reports";
 import type { MembershipRole } from "@/lib/staff-auth";
 
 type StaffRole = Exclude<MembershipRole, "PLATFORM_ADMIN">;
@@ -51,6 +54,15 @@ type TenantAdminSnapshot = {
     locationId: string | null;
     createdAt: string;
   }>;
+};
+
+type RestaurantSummary = {
+  activeLocations: number;
+  activeStaffMemberships: number;
+  activeMenuCategories: number;
+  activeMenuItems: number;
+  activeOrders: number;
+  completedOrders: number;
 };
 
 function getApiError(payload: unknown) {
@@ -93,16 +105,29 @@ function RestaurantAccessEmptyState() {
 
 export function RestaurantAdminPanel() {
   const [snapshot, setSnapshot] = useState<TenantAdminSnapshot | null>(null);
+  const [summary, setSummary] = useState<RestaurantSummary | null>(null);
+  const [report, setReport] = useState<OperationalReport | null>(null);
+  const [reportRange, setReportRange] = useState<ReportRange>("30d");
+  const [isReportLoading, setIsReportLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadTenantAdmin() {
-      const response = await fetch("/api/tenant/admin");
-      const payload = await response.json();
+      const [adminResponse, summaryResponse] = await Promise.all([
+        fetch("/api/tenant/admin"),
+        fetch("/api/tenant/summary?range=30d"),
+      ]);
+      const payload = await adminResponse.json();
 
-      if (!response.ok) {
+      if (!adminResponse.ok) {
         setError(getApiError(payload));
         return;
+      }
+
+      if (summaryResponse.ok) {
+        const summaryPayload = await summaryResponse.json();
+        setSummary(summaryPayload.summary ?? null);
+        setReport(summaryPayload.report ?? null);
       }
 
       setSnapshot(payload);
@@ -116,6 +141,24 @@ export function RestaurantAdminPanel() {
     ? `/order?qr=${snapshot.location.qrSlug}`
     : null;
 
+  async function refreshReport(nextRange: ReportRange) {
+    setReportRange(nextRange);
+    setIsReportLoading(true);
+
+    const response = await fetch(`/api/tenant/summary?range=${nextRange}`);
+    const payload = await response.json();
+
+    if (response.ok) {
+      setSummary(payload.summary ?? null);
+      setReport(payload.report ?? null);
+      setError(null);
+    } else {
+      setError(getApiError(payload));
+    }
+
+    setIsReportLoading(false);
+  }
+
   return (
     <div className="grid gap-6">
       {isMissingTenantAccess(error) ? (
@@ -126,6 +169,53 @@ export function RestaurantAdminPanel() {
 
       {snapshot ? (
         <>
+          {summary ? (
+            <SummaryCards
+              cards={[
+                {
+                  label: "Locations",
+                  value: summary.activeLocations,
+                  helper: "Active locations under this restaurant.",
+                },
+                {
+                  label: "Staff",
+                  value: summary.activeStaffMemberships,
+                  helper: "Active staff memberships.",
+                },
+                {
+                  label: "Menu categories",
+                  value: summary.activeMenuCategories,
+                  helper: "Active menu sections.",
+                },
+                {
+                  label: "Menu items",
+                  value: summary.activeMenuItems,
+                  helper: "Active products visible in the menu.",
+                },
+                {
+                  label: "Active orders",
+                  value: summary.activeOrders,
+                  helper: "Pending, preparing or ready orders.",
+                },
+                {
+                  label: "Non-cancelled orders",
+                  value: summary.completedOrders,
+                  helper: "All-time orders excluding cancellations.",
+                },
+              ]}
+            />
+          ) : null}
+
+          {report ? (
+            <OperationalReports
+              exportHref={`/api/tenant/reports/export?range=${reportRange}`}
+              isLoading={isReportLoading}
+              range={reportRange}
+              report={report}
+              onRangeChange={(nextRange) => void refreshReport(nextRange)}
+            />
+          ) : null}
+
           <div className="grid gap-4 lg:grid-cols-2">
             <Card className="rounded-xl border-stone-200 bg-white">
               <CardHeader className="flex flex-row items-start justify-between gap-4 px-5 pt-5">
@@ -175,11 +265,8 @@ export function RestaurantAdminPanel() {
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button asChild variant="outline" className="rounded-lg">
-                  <Link href="/restaurant/staff/invite">Invite staff</Link>
-                </Button>
                 <Button asChild className="rounded-lg">
-                  <Link href="/restaurant/staff/new">Add staff</Link>
+                  <Link href="/restaurant/staff/invite">Invite staff</Link>
                 </Button>
               </div>
             </CardHeader>

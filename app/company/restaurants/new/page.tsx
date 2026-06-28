@@ -24,7 +24,11 @@ export default async function NewCompanyRestaurantPage() {
       eyebrow="Company"
       title="Add restaurant"
       description="Create a child restaurant and its first operational location."
-      user={{ name: session.user.name, role: session.user.role }}
+      user={{
+        name: session.user.name,
+        organizationId: session.user.organizationId,
+        role: session.user.role,
+      }}
     >
       <CreateRestaurantForm />
     </SaasAdminShell>

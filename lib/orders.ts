@@ -67,6 +67,7 @@ export function serializeOrder(
   return {
     orderId: order.id,
     orderNo: order.orderNo,
+    orderDate: order.orderDate,
     organizationId: order.organizationId,
     locationId: order.locationId,
     customerName: order.customerName,

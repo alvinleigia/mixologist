@@ -2,11 +2,26 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getCustomerOrders, getOrderItemsForOrders, serializeOrder } from "@/lib/orders";
 import { getOrdersResetAt } from "@/lib/order-reset";
-import { getCurrentTenantContext } from "@/lib/tenant-context";
+import {
+  checkRateLimit,
+  getRequestRateLimitKey,
+  rateLimitResponse,
+} from "@/lib/rate-limit";
+import { getPublicTenantContextFromRequest } from "@/lib/tenant-context";
 import { orderStatusRequestSchema } from "@/lib/validations/order";
 
 export async function POST(request: NextRequest) {
   try {
+    const rateLimit = checkRateLimit({
+      key: getRequestRateLimitKey(request, "public:order-status"),
+      limit: 45,
+      windowMs: 60_000,
+    });
+
+    if (!rateLimit.allowed) {
+      return rateLimitResponse(rateLimit);
+    }
+
     const body = await request.json();
     const parsed = orderStatusRequestSchema.safeParse(body);
 
@@ -14,7 +29,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     }
 
-    const tenantContext = await getCurrentTenantContext();
+    const tenantContext = await getPublicTenantContextFromRequest(request);
     const matchingOrders = await getCustomerOrders(parsed.data.orders, tenantContext);
     const itemMap = await getOrderItemsForOrders(
       matchingOrders.map((order) => order.id),

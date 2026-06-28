@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requireRole } from "@/lib/auth";
+import { getCommercialMetrics } from "@/lib/billing";
 import { platformAdminRoles } from "@/lib/role-access";
 import {
   getPlatformCompanyBreakdown,
@@ -14,10 +15,11 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const [summary, breakdown] = await Promise.all([
+  const [summary, breakdown, commercial] = await Promise.all([
     getPlatformSummary(),
     getPlatformCompanyBreakdown(),
+    getCommercialMetrics(),
   ]);
 
-  return NextResponse.json({ summary, breakdown });
+  return NextResponse.json({ summary: { ...summary, commercial }, breakdown });
 }

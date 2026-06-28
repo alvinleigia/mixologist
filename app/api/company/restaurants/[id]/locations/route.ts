@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 
 import { requireRole } from "@/lib/auth";
+import { writeAuditLog } from "@/lib/audit-log";
 import { companyAdminRoles } from "@/lib/role-access";
 import {
   createRestaurantLocation,
@@ -35,8 +36,27 @@ export async function POST(request: Request, props: { params: Promise<{ id: stri
 
   try {
     const { id } = await props.params;
-    await createRestaurantLocation(session.user.organizationId, id, await request.json());
+    const location = await createRestaurantLocation(
+      session.user.organizationId,
+      id,
+      await request.json(),
+    );
     const locations = await listRestaurantLocations(session.user.organizationId, id);
+
+    await writeAuditLog({
+      actor: session.user,
+      organizationId: id,
+      locationId: location.id,
+      action: "company.location.create",
+      entityType: "location",
+      entityId: location.id,
+      metadata: {
+        companyOrganizationId: session.user.organizationId,
+        name: location.name,
+        slug: location.slug,
+        qrSlug: location.qrSlug,
+      },
+    });
 
     return NextResponse.json({
       locations,

@@ -1,8 +1,10 @@
 import {
   boolean,
   AnyPgColumn,
+  date,
   index,
   integer,
+  jsonb,
   numeric,
   pgEnum,
   pgTable,
@@ -55,6 +57,14 @@ export const cancelledByTypeEnum = pgEnum("cancelled_by_type", [
   "ADMIN",
 ]);
 
+export const subscriptionStatusEnum = pgEnum("subscription_status", [
+  "TRIALING",
+  "ACTIVE",
+  "PAST_DUE",
+  "SUSPENDED",
+  "CANCELLED",
+]);
+
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
   username: text("username").notNull().unique(),
@@ -91,6 +101,52 @@ export const organizations = pgTable(
   ],
 );
 
+export const saasPlans = pgTable(
+  "saas_plans",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    monthlyPrice: numeric("monthly_price", { precision: 10, scale: 2 })
+      .default("0")
+      .notNull(),
+    maxRestaurants: integer("max_restaurants").default(1).notNull(),
+    maxLocations: integer("max_locations").default(1).notNull(),
+    maxUsers: integer("max_users").default(5).notNull(),
+    maxMonthlyOrders: integer("max_monthly_orders").default(500).notNull(),
+    storageMb: integer("storage_mb").default(256).notNull(),
+    isActive: boolean("is_active").default(true).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [uniqueIndex("saas_plans_slug_unique").on(table.slug)],
+);
+
+export const organizationSubscriptions = pgTable(
+  "organization_subscriptions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    planId: uuid("plan_id")
+      .references(() => saasPlans.id)
+      .notNull(),
+    status: subscriptionStatusEnum("status").default("TRIALING").notNull(),
+    trialEndsAt: timestamp("trial_ends_at"),
+    currentPeriodEndsAt: timestamp("current_period_ends_at"),
+    externalCustomerId: text("external_customer_id"),
+    externalSubscriptionId: text("external_subscription_id"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("organization_subscriptions_org_unique").on(table.organizationId),
+    index("organization_subscriptions_plan_idx").on(table.planId),
+    index("organization_subscriptions_status_idx").on(table.status),
+  ],
+);
+
 export const locations = pgTable(
   "locations",
   {
@@ -111,6 +167,36 @@ export const locations = pgTable(
     index("locations_organization_idx").on(table.organizationId),
     uniqueIndex("locations_org_slug_unique").on(table.organizationId, table.slug),
     uniqueIndex("locations_qr_slug_unique").on(table.qrSlug),
+  ],
+);
+
+export const auditLogs = pgTable(
+  "audit_logs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    actorUserId: uuid("actor_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    actorUsername: text("actor_username"),
+    actorRole: membershipRoleEnum("actor_role"),
+    organizationId: uuid("organization_id").references(() => organizations.id, {
+      onDelete: "set null",
+    }),
+    locationId: uuid("location_id").references(() => locations.id, {
+      onDelete: "set null",
+    }),
+    action: text("action").notNull(),
+    entityType: text("entity_type").notNull(),
+    entityId: text("entity_id"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("audit_logs_actor_user_idx").on(table.actorUserId),
+    index("audit_logs_organization_idx").on(table.organizationId),
+    index("audit_logs_location_idx").on(table.locationId),
+    index("audit_logs_action_idx").on(table.action),
+    index("audit_logs_created_at_idx").on(table.createdAt),
   ],
 );
 
@@ -207,9 +293,46 @@ export const menuItems = pgTable("menu_items", {
   imageUrl: text("image_url"),
   sortOrder: integer("sort_order").default(0).notNull(),
   isActive: boolean("is_active").default(true).notNull(),
+  isSoldOut: boolean("is_sold_out").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+export const inventoryItems = pgTable(
+  "inventory_items",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    locationId: uuid("location_id")
+      .references(() => locations.id, { onDelete: "cascade" })
+      .notNull(),
+    menuItemId: uuid("menu_item_id")
+      .references(() => menuItems.id, { onDelete: "cascade" })
+      .notNull(),
+    unit: text("unit").default("servings").notNull(),
+    currentQuantity: numeric("current_quantity", { precision: 10, scale: 2 })
+      .default("0")
+      .notNull(),
+    lowStockThreshold: numeric("low_stock_threshold", { precision: 10, scale: 2 })
+      .default("0")
+      .notNull(),
+    isTracked: boolean("is_tracked").default(true).notNull(),
+    notes: text("notes"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("inventory_items_organization_idx").on(table.organizationId),
+    index("inventory_items_location_idx").on(table.locationId),
+    uniqueIndex("inventory_items_menu_item_unique").on(
+      table.organizationId,
+      table.locationId,
+      table.menuItemId,
+    ),
+  ],
+);
 
 export const orders = pgTable("orders", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -219,7 +342,8 @@ export const orders = pgTable("orders", {
   locationId: uuid("location_id")
     .references(() => locations.id, { onDelete: "cascade" })
     .notNull(),
-  orderNo: integer("order_no").notNull().unique(),
+  orderDate: date("order_date").notNull(),
+  orderNo: integer("order_no").notNull(),
   customerName: text("customer_name").notNull(),
   customerToken: text("customer_token").notNull(),
   categoryId: text("category_id").notNull(),
@@ -238,7 +362,14 @@ export const orders = pgTable("orders", {
   announcementCount: integer("announcement_count").default(0).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => [
+  uniqueIndex("orders_location_order_date_no_unique").on(
+    table.organizationId,
+    table.locationId,
+    table.orderDate,
+    table.orderNo,
+  ),
+]);
 
 export const orderItems = pgTable("order_items", {
   id: uuid("id").defaultRandom().primaryKey(),

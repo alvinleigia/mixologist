@@ -21,7 +21,11 @@ export default async function RestaurantStaffAccessPage(
       eyebrow="Staff"
       title="Edit staff access"
       description="Adjust this user's role or active access for the current restaurant."
-      user={{ name: session.user.name, role: session.user.role }}
+      user={{
+        name: session.user.name,
+        organizationId: session.user.organizationId,
+        role: session.user.role,
+      }}
     >
       <TenantStaffAccessForm staff={staff} />
     </SaasAdminShell>

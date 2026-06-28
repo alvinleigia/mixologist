@@ -113,6 +113,32 @@ export async function updateLocationSettings(context: TenantContext, input: unkn
   return location ?? null;
 }
 
+export async function checkLocationQrSlugAvailability(
+  context: TenantContext,
+  qrSlug: string,
+) {
+  const parsedQrSlug = locationSettingsSchema.shape.qrSlug.parse(qrSlug);
+
+  if (!parsedQrSlug) {
+    return {
+      available: true,
+      normalizedQrSlug: null,
+    };
+  }
+
+  const db = getDb();
+  const [existingQrLocation] = await db
+    .select({ id: locations.id })
+    .from(locations)
+    .where(and(eq(locations.qrSlug, parsedQrSlug), ne(locations.id, context.locationId)))
+    .limit(1);
+
+  return {
+    available: !existingQrLocation,
+    normalizedQrSlug: parsedQrSlug,
+  };
+}
+
 export async function createStaffUser(context: TenantContext, input: unknown) {
   const parsed = createStaffUserSchema.parse(input);
   const db = getDb();
