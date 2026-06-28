@@ -283,6 +283,11 @@ export function PlatformCompaniesPanel() {
                         </Link>
                       </DropdownMenuItem>
                       <DropdownMenuItem asChild>
+                        <Link href={`/platform/companies/${company.id}/domains`}>
+                          Domains
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
                         <a href={`/api/platform/companies/${company.id}/export`}>
                           Export company data
                         </a>

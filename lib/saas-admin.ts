@@ -1,4 +1,5 @@
 import { and, eq, ne } from "drizzle-orm";
+import { ZodError } from "zod";
 
 import { getDb } from "@/db";
 import {
@@ -18,9 +19,11 @@ import {
   createChildRestaurantSchema,
   createCompanyStaffUserSchema,
   createCompanyOrganizationSchema,
+  companyDomainSchema,
   createRestaurantLocationSchema,
   createRestaurantStaffUserSchema,
   updateChildRestaurantAdminSchema,
+  updateCompanyDomainSchema,
   updateOrganizationAdminSchema,
 } from "@/lib/validations/tenant-admin";
 import {
@@ -141,6 +144,123 @@ export async function getPlatformCompanyWithSubscription(
   const companies = await listPlatformCompanies();
 
   return companies.find((company) => company.id === companyOrganizationId) ?? null;
+}
+
+export async function listCompanyDomains(companyOrganizationId: string) {
+  const company = await getPlatformCompany(companyOrganizationId);
+
+  if (!company) {
+    return null;
+  }
+
+  return getDb()
+    .select()
+    .from(tenantDomains)
+    .where(eq(tenantDomains.companyOrganizationId, companyOrganizationId));
+}
+
+async function assertDomainIsAvailable(domain: string, currentDomainId?: string) {
+  const [existing] = await getDb()
+    .select({
+      id: tenantDomains.id,
+      domain: tenantDomains.domain,
+    })
+    .from(tenantDomains)
+    .where(eq(tenantDomains.domain, domain))
+    .limit(1);
+
+  if (existing && existing.id !== currentDomainId) {
+    throw new Error("This domain is already linked to another tenant.");
+  }
+}
+
+export async function createCompanyDomain(companyOrganizationId: string, input: unknown) {
+  const company = await getPlatformCompany(companyOrganizationId);
+
+  if (!company) {
+    return null;
+  }
+
+  const parsed = companyDomainSchema.parse(input);
+  const db = getDb();
+
+  await assertDomainIsAvailable(parsed.domain);
+
+  return db.transaction(async (tx) => {
+    if (parsed.isPrimary) {
+      await tx
+        .update(tenantDomains)
+        .set({
+          isPrimary: false,
+          updatedAt: new Date(),
+        })
+        .where(eq(tenantDomains.companyOrganizationId, companyOrganizationId));
+    }
+
+    const [domain] = await tx
+      .insert(tenantDomains)
+      .values({
+        domain: parsed.domain,
+        scope: "COMPANY",
+        purpose: parsed.purpose,
+        companyOrganizationId,
+        isPrimary: parsed.isPrimary,
+        isActive: parsed.isActive,
+        updatedAt: new Date(),
+      })
+      .returning();
+
+    return domain;
+  });
+}
+
+export async function updateCompanyDomain(
+  companyOrganizationId: string,
+  domainId: string,
+  input: unknown,
+) {
+  const company = await getPlatformCompany(companyOrganizationId);
+
+  if (!company) {
+    return null;
+  }
+
+  const parsed = updateCompanyDomainSchema.parse(input);
+  const db = getDb();
+
+  return db.transaction(async (tx) => {
+    if (parsed.isPrimary) {
+      await tx
+        .update(tenantDomains)
+        .set({
+          isPrimary: false,
+          updatedAt: new Date(),
+        })
+        .where(eq(tenantDomains.companyOrganizationId, companyOrganizationId));
+    }
+
+    const [domain] = await tx
+      .update(tenantDomains)
+      .set({
+        ...(parsed.purpose ? { purpose: parsed.purpose } : {}),
+        ...(typeof parsed.isPrimary === "boolean" ? { isPrimary: parsed.isPrimary } : {}),
+        ...(typeof parsed.isActive === "boolean" ? { isActive: parsed.isActive } : {}),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(tenantDomains.id, domainId),
+          eq(tenantDomains.companyOrganizationId, companyOrganizationId),
+        ),
+      )
+      .returning();
+
+    return domain ?? null;
+  });
+}
+
+export function isTenantAdminValidationError(error: unknown) {
+  return error instanceof ZodError;
 }
 
 export async function createCompanyOrganization(input: unknown) {

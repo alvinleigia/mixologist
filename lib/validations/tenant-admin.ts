@@ -101,6 +101,26 @@ export const createChildRestaurantSchema = z.object({
   locationLabel: z.string().trim().max(160).optional().transform((value) => value || null),
 });
 
+export const companyDomainSchema = z.object({
+  domain: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .transform((value) => value.replace(/^https?:\/\//, "").split("/")[0].split(":")[0])
+    .refine((value) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(value), {
+      message: "Enter a valid domain such as foodie.allgoonline.co.uk",
+    }),
+  purpose: z.enum(["ORDERING", "BOTH"]).default("ORDERING"),
+  isPrimary: z.boolean().default(false),
+  isActive: z.boolean().default(true),
+});
+
+export const updateCompanyDomainSchema = z.object({
+  purpose: z.enum(["ORDERING", "BOTH"]).optional(),
+  isPrimary: z.boolean().optional(),
+  isActive: z.boolean().optional(),
+});
+
 const createTenantStaffBaseSchema = z.object({
   username: z.string().trim().min(3).max(60),
   name: z.string().trim().min(2).max(120),

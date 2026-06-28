@@ -376,7 +376,7 @@ Tasks:
 - [x] Update tenant context helpers to prefer trusted QR/location/domain resolution before falling back to signed-in session or default dev context.
 - [x] Keep public ordering on company subdomains using location slugs such as `/order/{locationSlug}` or a compatible route alias.
 - [ ] Keep staff/admin login safest on `foodie.leigia.com` until custom-domain Auth.js cookie behavior is explicitly hardened.
-- [ ] Add custom domain management UI after the core subdomain resolver is stable.
+- [x] Add custom domain management UI after the core subdomain resolver is stable.
 - [ ] Add Vercel domain registration automation only after manual domain mapping is tested.
 - [ ] Add UAT cases for platform domain, company subdomain, location ordering and future custom ordering domain.
 
@@ -394,6 +394,8 @@ Implementation notes:
 - Domain helper logic lives in `lib/tenant-domains.ts`.
 - New public route aliases are `/order/[locationSlug]` and `/order/status/[locationSlug]`; existing `/order?qr=...` and `/order/status?qr=...` continue to work.
 - Public APIs now accept `?location=...` in addition to `?qr=...` for company-domain order/menu/status/cancel requests.
+- SaaS owners can manage company domain mappings from `/platform/companies/[id]/domains`.
+- Custom domain UI stores the Foodie tenant mapping; the domain must still be added to Vercel and pointed by DNS until Vercel API automation is implemented.
 
 Production TODOs:
 

@@ -1,0 +1,306 @@
+"use client";
+
+import Link from "next/link";
+import { useState } from "react";
+import { ExternalLinkIcon } from "lucide-react";
+import { toast } from "sonner";
+
+import { FormField } from "@/components/shared/FormField";
+import { Spinner } from "@/components/shared/Spinner";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+type CompanyDomain = {
+  id: string;
+  domain: string;
+  scope: "PLATFORM" | "COMPANY" | "RESTAURANT" | "LOCATION";
+  purpose: "ADMIN" | "ORDERING" | "BOTH";
+  isPrimary: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type CompanyDomainsPanelProps = {
+  apiPath: string;
+  companyName: string;
+  domains: CompanyDomain[];
+};
+
+function getApiError(payload: unknown) {
+  if (payload && typeof payload === "object" && "error" in payload) {
+    const error = (payload as { error?: unknown }).error;
+
+    if (typeof error === "string") {
+      return error;
+    }
+  }
+
+  return "Action failed.";
+}
+
+function normalizeDomainInput(value: string) {
+  return value.trim().toLowerCase().replace(/^https?:\/\//, "").split("/")[0].split(":")[0];
+}
+
+export function CompanyDomainsPanel({
+  apiPath,
+  companyName,
+  domains: initialDomains,
+}: CompanyDomainsPanelProps) {
+  const [domains, setDomains] = useState(initialDomains);
+  const [domain, setDomain] = useState("");
+  const [purpose, setPurpose] = useState<"ORDERING" | "BOTH">("ORDERING");
+  const [isPrimary, setIsPrimary] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingDomainId, setPendingDomainId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function addDomain() {
+    setIsSubmitting(true);
+    setError(null);
+
+    const response = await fetch(apiPath, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        domain: normalizeDomainInput(domain),
+        purpose,
+        isPrimary,
+        isActive: true,
+      }),
+    });
+    const payload = await response.json();
+
+    if (!response.ok) {
+      const message = getApiError(payload);
+      setError(message);
+      toast.error(message);
+      setIsSubmitting(false);
+      return;
+    }
+
+    setDomains(payload.domains ?? []);
+    setDomain("");
+    setPurpose("ORDERING");
+    setIsPrimary(false);
+    setIsSubmitting(false);
+    toast.success("Domain linked.");
+  }
+
+  async function updateDomain(
+    domainRecord: CompanyDomain,
+    input: Partial<Pick<CompanyDomain, "isActive" | "isPrimary" | "purpose">>,
+  ) {
+    setPendingDomainId(domainRecord.id);
+    setError(null);
+
+    const response = await fetch(`${apiPath}/${domainRecord.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    const payload = await response.json();
+
+    if (!response.ok) {
+      const message = getApiError(payload);
+      setError(message);
+      toast.error(message);
+      setPendingDomainId(null);
+      return;
+    }
+
+    setDomains(payload.domains ?? []);
+    setPendingDomainId(null);
+    toast.success("Domain updated.");
+  }
+
+  return (
+    <div className="grid gap-6">
+      <Card className="rounded-xl border-stone-200 bg-white">
+        <CardHeader className="px-5 pt-5">
+          <h3 className="text-2xl font-semibold text-stone-950">Add domain</h3>
+          <p className="text-sm text-stone-500">
+            Link a custom domain to {companyName}. Add the same domain in Vercel and point DNS there.
+          </p>
+        </CardHeader>
+        <CardContent className="px-5 pb-5">
+          <form
+            className="grid gap-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void addDomain();
+            }}
+          >
+            {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+
+            <div className="grid gap-4 lg:grid-cols-[1fr_220px]">
+              <FormField label="Domain" htmlFor="company-domain">
+                <Input
+                  id="company-domain"
+                  value={domain}
+                  onChange={(event) => setDomain(event.target.value)}
+                  placeholder="foodie.allgoonline.co.uk"
+                  disabled={isSubmitting}
+                />
+              </FormField>
+
+              <FormField label="Purpose">
+                <Select
+                  value={purpose}
+                  onValueChange={(nextPurpose) =>
+                    setPurpose(nextPurpose as "ORDERING" | "BOTH")
+                  }
+                >
+                  <SelectTrigger className="bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ORDERING">Ordering only</SelectItem>
+                    <SelectItem value="BOTH">Admin and ordering</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FormField>
+            </div>
+
+            <label className="flex items-center gap-3 rounded-lg border border-stone-200 bg-stone-50 px-3 py-3 text-sm text-stone-700">
+              <Checkbox
+                checked={isPrimary}
+                onCheckedChange={(checked) => setIsPrimary(checked === true)}
+              />
+              Make this the primary company domain
+            </label>
+
+            <div className="rounded-lg border border-dashed border-stone-200 bg-stone-50 p-4 text-sm text-stone-600">
+              <p className="font-semibold text-stone-950">DNS reminder</p>
+              <p className="mt-1">
+                In Vercel, add this domain to the Foodie project. Then create the DNS CNAME record
+                your Vercel dashboard shows. This page stores the tenant mapping inside Foodie.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <Button
+                type="submit"
+                disabled={isSubmitting}
+                className="rounded-lg bg-stone-950 text-white hover:bg-stone-800"
+              >
+                {isSubmitting ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Spinner className="text-white" />
+                    Adding...
+                  </span>
+                ) : (
+                  "Add Domain"
+                )}
+              </Button>
+              <Button asChild type="button" variant="outline" className="rounded-lg">
+                <Link href="/platform">Back</Link>
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-xl border-stone-200 bg-white">
+        <CardHeader className="px-5 pt-5">
+          <h3 className="text-2xl font-semibold text-stone-950">Linked domains</h3>
+          <p className="text-sm text-stone-500">
+            These domains can resolve {companyName} once Vercel and DNS are configured.
+          </p>
+        </CardHeader>
+        <CardContent className="grid gap-3 px-5 pb-5">
+          {domains.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-stone-200 p-4 text-sm text-stone-500">
+              No domains linked yet.
+            </p>
+          ) : null}
+
+          {domains.map((domainRecord) => (
+            <div
+              key={domainRecord.id}
+              className="grid gap-4 rounded-lg border border-stone-200 bg-stone-50 p-4 lg:grid-cols-[1fr_auto]"
+            >
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-semibold text-stone-950">{domainRecord.domain}</p>
+                  {domainRecord.isPrimary ? (
+                    <span className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">
+                      Primary
+                    </span>
+                  ) : null}
+                  <span
+                    className={
+                      domainRecord.isActive
+                        ? "rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700"
+                        : "rounded-md border border-stone-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-stone-500"
+                    }
+                  >
+                    {domainRecord.isActive ? "Active" : "Disabled"}
+                  </span>
+                  <span className="rounded-md border border-stone-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">
+                    {domainRecord.purpose.toLowerCase()}
+                  </span>
+                </div>
+                <a
+                  href={`https://${domainRecord.domain}/order`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-stone-600 hover:text-stone-950"
+                >
+                  Open ordering domain
+                  <ExternalLinkIcon className="size-3.5" />
+                </a>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={pendingDomainId === domainRecord.id || domainRecord.isPrimary}
+                  onClick={() => updateDomain(domainRecord, { isPrimary: true })}
+                  className="rounded-lg"
+                >
+                  Make Primary
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={pendingDomainId === domainRecord.id}
+                  onClick={() =>
+                    updateDomain(domainRecord, { isActive: !domainRecord.isActive })
+                  }
+                  className={
+                    domainRecord.isActive
+                      ? "rounded-lg border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-700"
+                      : "rounded-lg border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-700"
+                  }
+                >
+                  {pendingDomainId === domainRecord.id ? (
+                    <span className="inline-flex items-center gap-2">
+                      <Spinner />
+                      Saving...
+                    </span>
+                  ) : domainRecord.isActive ? (
+                    "Disable"
+                  ) : (
+                    "Enable"
+                  )}
+                </Button>
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
