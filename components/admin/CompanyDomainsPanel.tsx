@@ -263,6 +263,23 @@ export function CompanyDomainsPanel({
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                <Select
+                  value={domainRecord.purpose}
+                  disabled={pendingDomainId === domainRecord.id}
+                  onValueChange={(nextPurpose) =>
+                    updateDomain(domainRecord, {
+                      purpose: nextPurpose as CompanyDomain["purpose"],
+                    })
+                  }
+                >
+                  <SelectTrigger className="h-10 w-[190px] bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ORDERING">Ordering only</SelectItem>
+                    <SelectItem value="BOTH">Admin and ordering</SelectItem>
+                  </SelectContent>
+                </Select>
                 <Button
                   type="button"
                   variant="outline"
