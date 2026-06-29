@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { requireRole } from "@/lib/auth";
 import { listAuditLogsForViewer } from "@/lib/audit-log";
-import { restaurantAdminRoles } from "@/lib/role-access";
+import { auditLogRoles } from "@/lib/role-access";
 
 export async function GET(request: NextRequest) {
-  const session = await requireRole([...restaurantAdminRoles]);
+  const session = await requireRole(auditLogRoles);
 
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

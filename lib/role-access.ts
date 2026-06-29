@@ -16,6 +16,12 @@ export const operationalRoles = [
   "ORDER_OPERATOR",
 ] satisfies MembershipRole[];
 
+export const auditLogRoles = [
+  ...platformAdminRoles,
+  ...companyAdminRoles,
+  ...restaurantAdminRoles,
+] satisfies MembershipRole[];
+
 export function canAccessRole(
   role: MembershipRole | null | undefined,
   allowedRoles: MembershipRole[],
@@ -75,11 +81,7 @@ export function canAccessNavigationPath(role: MembershipRole, href: string) {
   }
 
   if (href === "/audit-logs") {
-    return canAccessRole(role, [
-      ...platformAdminRoles,
-      ...companyAdminRoles,
-      ...restaurantAdminRoles,
-    ]);
+    return canAccessRole(role, auditLogRoles);
   }
 
   return true;

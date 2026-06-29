@@ -3,18 +3,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { AuditLogPanel } from "@/components/admin/AuditLogPanel";
 import { SaasAdminShell } from "@/components/admin/SaasAdminShell";
-import {
-  canAccessRole,
-  companyAdminRoles,
-  platformAdminRoles,
-  restaurantAdminRoles,
-} from "@/lib/role-access";
-
-const auditLogRoles = [
-  ...platformAdminRoles,
-  ...companyAdminRoles,
-  ...restaurantAdminRoles,
-];
+import { auditLogRoles, canAccessRole } from "@/lib/role-access";
 
 export default async function AuditLogsPage() {
   const session = await auth();
