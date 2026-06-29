@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import { getApiError } from "@/lib/api-client";
+import { fetchJson, getCaughtErrorMessage } from "@/lib/api-client";
 import {
   ReportBreakdown,
   type ReportBreakdownRow,
@@ -34,6 +34,11 @@ type PlatformReport = ReportBreakdownRow & {
   childRestaurants: number;
 };
 
+type PlatformSummaryResponse = {
+  breakdown?: PlatformReport[];
+  summary?: PlatformSummary;
+};
+
 export function PlatformDashboardPanel({
   uatResetEnabled = false,
 }: {
@@ -46,18 +51,17 @@ export function PlatformDashboardPanel({
 
   useEffect(() => {
     async function loadDashboard() {
-      const response = await fetch("/api/platform/summary");
-      const payload = await response.json();
-
-      if (!response.ok) {
-        setError(getApiError(payload));
+      try {
+        const payload = await fetchJson<PlatformSummaryResponse>("/api/platform/summary");
+        setSummary(payload.summary ?? null);
+        setBreakdown(payload.breakdown ?? []);
+        setError(null);
+      } catch (caught) {
+        setError(getCaughtErrorMessage(caught));
         setIsLoading(false);
         return;
       }
 
-      setSummary(payload.summary ?? null);
-      setBreakdown(payload.breakdown ?? []);
-      setError(null);
       setIsLoading(false);
     }
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { fetchJson, getCaughtErrorMessage } from "@/lib/api-client";
 import { Spinner } from "@/components/shared/Spinner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -18,6 +19,10 @@ type AuditLogRow = {
   entityId: string | null;
   metadata: Record<string, unknown> | null;
   createdAt: string;
+};
+
+type AuditLogsResponse = {
+  logs?: AuditLogRow[];
 };
 
 function formatDate(value: string) {
@@ -46,21 +51,18 @@ export function AuditLogPanel() {
 
   useEffect(() => {
     async function loadAuditLogs() {
-      const response = await fetch("/api/audit-logs?limit=50");
-      const payload = await response.json();
-
-      if (!response.ok) {
-        setError(
-          typeof payload?.error === "string"
-            ? payload.error
-            : "Failed to load audit logs.",
-        );
+      try {
+        const payload = await fetchJson<AuditLogsResponse>("/api/audit-logs?limit=50", {
+          fallbackError: "Failed to load audit logs.",
+        });
+        setLogs(payload.logs ?? []);
+        setError(null);
+      } catch (caught) {
+        setError(getCaughtErrorMessage(caught, "Failed to load audit logs."));
         setIsLoading(false);
         return;
       }
 
-      setLogs(payload.logs ?? []);
-      setError(null);
       setIsLoading(false);
     }
 

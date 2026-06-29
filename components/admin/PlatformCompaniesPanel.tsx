@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { MoreHorizontalIcon } from "lucide-react";
 
-import { getApiError } from "@/lib/api-client";
+import { fetchJson, getCaughtErrorMessage } from "@/lib/api-client";
 import { Spinner } from "@/components/shared/Spinner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -42,6 +42,10 @@ type CompanyOrganization = {
   } | null;
 };
 
+type PlatformCompaniesResponse = {
+  companies?: CompanyOrganization[];
+};
+
 function formatDate(value: string | null | undefined) {
   if (!value) {
     return "Not set";
@@ -61,18 +65,16 @@ export function PlatformCompaniesPanel() {
 
   useEffect(() => {
     async function loadCompanies() {
-      const companiesResponse = await fetch("/api/platform/companies");
-      const payload = await companiesResponse.json();
-
-      if (!companiesResponse.ok) {
-        setError(getApiError(payload));
+      try {
+        const payload = await fetchJson<PlatformCompaniesResponse>("/api/platform/companies");
+        setCompanies(payload.companies ?? []);
+        setError(null);
+      } catch (caught) {
+        setError(getCaughtErrorMessage(caught));
         setIsLoading(false);
         return;
       }
 
-      setCompanies(payload.companies ?? []);
-
-      setError(null);
       setIsLoading(false);
     }
 

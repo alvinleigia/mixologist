@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { MoreHorizontalIcon } from "lucide-react";
 import { toast } from "sonner";
 
-import { getApiError, getCaughtErrorMessage, requestJson } from "@/lib/api-client";
+import { fetchJson, getCaughtErrorMessage, requestJson } from "@/lib/api-client";
 import { Spinner } from "@/components/shared/Spinner";
 import {
   ReportBreakdown,
@@ -64,6 +64,16 @@ type RestaurantsMutationResponse = {
   restaurants?: CompanyRestaurant[];
 };
 
+type CompanyRestaurantsResponse = {
+  restaurants?: CompanyRestaurant[];
+};
+
+type CompanySummaryResponse = {
+  breakdown?: ReportBreakdownRow[];
+  report?: OperationalReport;
+  summary?: CompanySummary;
+};
+
 type CompanyRestaurantsPanelProps = {
   hasRealCompanyContext: boolean;
 };
@@ -110,13 +120,14 @@ export function CompanyRestaurantsPanel({
   const [pendingAction, setPendingAction] = useState<string | null>(null);
 
   async function refreshCompanySummary(range = reportRange) {
-    const summaryResponse = await fetch(`/api/company/summary?range=${range}`);
+    let summaryPayload: CompanySummaryResponse;
 
-    if (!summaryResponse.ok) {
+    try {
+      summaryPayload = await fetchJson(`/api/company/summary?range=${range}`);
+    } catch {
       return;
     }
 
-    const summaryPayload = await summaryResponse.json();
     setSummary(summaryPayload.summary ?? null);
     setBreakdown(summaryPayload.breakdown ?? []);
     setReport(summaryPayload.report ?? null);
@@ -128,28 +139,27 @@ export function CompanyRestaurantsPanel({
     }
 
     async function loadRestaurants() {
-      const [restaurantsResponse, summaryResponse] = await Promise.all([
-        fetch("/api/company/restaurants"),
-        fetch("/api/company/summary?range=30d"),
-      ]);
-      const payload = await restaurantsResponse.json();
+      try {
+        const [payload, summaryPayload] = await Promise.all([
+          fetchJson<CompanyRestaurantsResponse>("/api/company/restaurants"),
+          fetchJson<CompanySummaryResponse>("/api/company/summary?range=30d").catch(() => null),
+        ]);
 
-      if (!restaurantsResponse.ok) {
-        setError(getApiError(payload));
+        setRestaurants(payload.restaurants ?? []);
+
+        if (summaryPayload) {
+          setSummary(summaryPayload.summary ?? null);
+          setBreakdown(summaryPayload.breakdown ?? []);
+          setReport(summaryPayload.report ?? null);
+        }
+
+        setError(null);
+      } catch (caught) {
+        setError(getCaughtErrorMessage(caught));
         setIsLoading(false);
         return;
       }
 
-      setRestaurants(payload.restaurants ?? []);
-
-      if (summaryResponse.ok) {
-        const summaryPayload = await summaryResponse.json();
-        setSummary(summaryPayload.summary ?? null);
-        setBreakdown(summaryPayload.breakdown ?? []);
-        setReport(summaryPayload.report ?? null);
-      }
-
-      setError(null);
       setIsLoading(false);
     }
 

@@ -85,7 +85,7 @@ These items come from a project-wide maintainability scan. The app is functional
 
 - [ ] Split `lib/saas-admin.ts` into focused services: platform companies, company restaurants/locations, company users/memberships, domains and reassignment.
 - [ ] Split `lib/saas-reports.ts` into report query modules by concern: summaries, status/product reports, timing/cancellation/revenue reports and CSV export.
-- [ ] Migrate remaining safe `fetch -> json -> error` call sites to the shared JSON request helper, then consider shared loading/toast wrappers.
+- [ ] Review the remaining QR slug availability fetch after tests cover live validation behavior.
 - [ ] Extend shared money/price formatting into reports and any remaining price displays.
 - [ ] Add automated tests for tenant isolation before refactoring route handlers or data services.
 - [ ] Add automated tests for order workflow transitions before changing order board or customer status behavior.

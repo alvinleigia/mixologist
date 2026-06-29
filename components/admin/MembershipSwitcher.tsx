@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
+import { fetchJson, getCaughtErrorMessage, requestJson } from "@/lib/api-client";
 import {
   Select,
   SelectContent,
@@ -32,6 +33,11 @@ type MembershipPayload = {
     role: MembershipRole;
   };
   memberships: MembershipOption[];
+};
+
+type MembershipSwitchResponse = {
+  error?: string;
+  redirectTo?: string;
 };
 
 type MembershipSwitcherProps = {
@@ -108,13 +114,14 @@ export function MembershipSwitcher({
 
   useEffect(() => {
     async function loadMemberships() {
-      const response = await fetch("/api/session/memberships");
+      let nextPayload: MembershipPayload;
 
-      if (!response.ok) {
+      try {
+        nextPayload = await fetchJson<MembershipPayload>("/api/session/memberships");
+      } catch {
         return;
       }
 
-      const nextPayload = (await response.json()) as MembershipPayload;
       const active = findActiveMembership(nextPayload.memberships, {
         organizationId: currentOrganizationId || nextPayload.active.organizationId,
         locationId: currentLocationId ?? nextPayload.active.locationId,
@@ -155,15 +162,16 @@ export function MembershipSwitcher({
           setSelectedMembershipId(membershipId);
 
           startTransition(async () => {
-            const response = await fetch("/api/session/memberships", {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ membershipId }),
-            });
-            const body = (await response.json()) as { redirectTo?: string; error?: string };
+            let body: MembershipSwitchResponse;
 
-            if (!response.ok) {
-              toast.error(body.error ?? "Could not switch access context.");
+            try {
+              body = await requestJson("/api/session/memberships", {
+                body: { membershipId },
+                fallbackError: "Could not switch access context.",
+                method: "PATCH",
+              });
+            } catch (caught) {
+              toast.error(getCaughtErrorMessage(caught, "Could not switch access context."));
               setSelectedMembershipId(selectedMembership?.membershipId ?? "");
               return;
             }

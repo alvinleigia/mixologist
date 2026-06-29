@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { MoreHorizontalIcon } from "lucide-react";
 
-import { getApiError } from "@/lib/api-client";
+import { fetchJson, getCaughtErrorMessage } from "@/lib/api-client";
 import { OperationalReports } from "@/components/admin/OperationalReports";
 import { SummaryCards } from "@/components/admin/SummaryCards";
 import { SectionHeader } from "@/components/shared/SectionHeader";
@@ -66,6 +66,11 @@ type RestaurantSummary = {
   completedOrders: number;
 };
 
+type RestaurantSummaryResponse = {
+  report?: OperationalReport;
+  summary?: RestaurantSummary;
+};
+
 function isMissingTenantAccess(error: string | null) {
   return error?.toLowerCase().includes("missing tenant or location access") ?? false;
 }
@@ -102,25 +107,23 @@ export function RestaurantAdminPanel() {
 
   useEffect(() => {
     async function loadTenantAdmin() {
-      const [adminResponse, summaryResponse] = await Promise.all([
-        fetch("/api/tenant/admin"),
-        fetch("/api/tenant/summary?range=30d"),
-      ]);
-      const payload = await adminResponse.json();
+      try {
+        const [payload, summaryPayload] = await Promise.all([
+          fetchJson<TenantAdminSnapshot>("/api/tenant/admin"),
+          fetchJson<RestaurantSummaryResponse>("/api/tenant/summary?range=30d").catch(() => null),
+        ]);
 
-      if (!adminResponse.ok) {
-        setError(getApiError(payload));
+        if (summaryPayload) {
+          setSummary(summaryPayload.summary ?? null);
+          setReport(summaryPayload.report ?? null);
+        }
+
+        setSnapshot(payload);
+        setError(null);
+      } catch (caught) {
+        setError(getCaughtErrorMessage(caught));
         return;
       }
-
-      if (summaryResponse.ok) {
-        const summaryPayload = await summaryResponse.json();
-        setSummary(summaryPayload.summary ?? null);
-        setReport(summaryPayload.report ?? null);
-      }
-
-      setSnapshot(payload);
-      setError(null);
     }
 
     void loadTenantAdmin();
@@ -134,15 +137,15 @@ export function RestaurantAdminPanel() {
     setReportRange(nextRange);
     setIsReportLoading(true);
 
-    const response = await fetch(`/api/tenant/summary?range=${nextRange}`);
-    const payload = await response.json();
-
-    if (response.ok) {
+    try {
+      const payload = await fetchJson<RestaurantSummaryResponse>(
+        `/api/tenant/summary?range=${nextRange}`,
+      );
       setSummary(payload.summary ?? null);
       setReport(payload.report ?? null);
       setError(null);
-    } else {
-      setError(getApiError(payload));
+    } catch (caught) {
+      setError(getCaughtErrorMessage(caught));
     }
 
     setIsReportLoading(false);

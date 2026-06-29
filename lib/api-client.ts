@@ -41,8 +41,26 @@ type JsonRequestOptions = {
   method?: "DELETE" | "PATCH" | "POST" | "PUT";
 };
 
+type JsonFetchOptions = {
+  fallbackError?: string;
+};
+
 export function getCaughtErrorMessage(error: unknown, fallback = "Action failed.") {
   return error instanceof Error ? error.message : fallback;
+}
+
+export async function fetchJson<T = unknown>(
+  path: string,
+  { fallbackError = "Action failed." }: JsonFetchOptions = {},
+) {
+  const response = await fetch(path);
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(getApiError(payload, fallbackError));
+  }
+
+  return payload as T;
 }
 
 export async function requestJson<T = unknown>(

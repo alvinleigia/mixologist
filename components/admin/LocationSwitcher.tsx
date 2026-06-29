@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import { fetchJson, requestJson } from "@/lib/api-client";
 import {
   Select,
   SelectContent,
@@ -37,13 +38,11 @@ export function LocationSwitcher() {
 
   useEffect(() => {
     async function loadLocations() {
-      const response = await fetch("/api/session/locations");
-
-      if (!response.ok) {
+      try {
+        setPayload(await fetchJson<LocationPayload>("/api/session/locations"));
+      } catch {
         return;
       }
-
-      setPayload(await response.json());
     }
 
     void loadLocations();
@@ -67,13 +66,12 @@ export function LocationSwitcher() {
           const [organizationId, locationId] = value.split(":");
 
           startTransition(async () => {
-            const response = await fetch("/api/session/locations", {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ organizationId, locationId }),
-            });
-
-            if (!response.ok) {
+            try {
+              await requestJson("/api/session/locations", {
+                body: { organizationId, locationId },
+                method: "PATCH",
+              });
+            } catch {
               toast.error("Could not switch location.");
               return;
             }
