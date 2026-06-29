@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import { getApiError } from "@/lib/api-client";
+import { getCaughtErrorMessage, requestJson } from "@/lib/api-client";
 import { FormField } from "@/components/shared/FormField";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -152,21 +152,19 @@ export function ReassignExistingUserForm({
   async function submitReassignment() {
     setIsSubmitting(true);
     const companyRole = isCompanyRole(role);
-    const response = await fetch("/api/platform/users/reassign", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        identifier,
-        role,
-        organizationId: companyRole ? activeCompanyId : activeRestaurantId,
-        locationId: companyRole ? null : activeLocationId,
-        deactivateExisting,
-      }),
-    });
-    const payload = await response.json();
 
-    if (!response.ok) {
-      const message = getApiError(payload);
+    try {
+      await requestJson("/api/platform/users/reassign", {
+        body: {
+          identifier,
+          role,
+          organizationId: companyRole ? activeCompanyId : activeRestaurantId,
+          locationId: companyRole ? null : activeLocationId,
+          deactivateExisting,
+        },
+      });
+    } catch (caught) {
+      const message = getCaughtErrorMessage(caught);
       setError(message);
       toast.error(message);
       setIsSubmitting(false);

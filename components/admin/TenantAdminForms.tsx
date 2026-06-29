@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
-import { getApiError } from "@/lib/api-client";
+import { getApiError, requestJson } from "@/lib/api-client";
 import { FormField } from "@/components/shared/FormField";
 import { CurrencySelect, TimezoneSelect } from "@/components/shared/LocaleSelects";
 import { StaffInviteForm } from "@/components/admin/StaffInviteForm";
@@ -48,18 +48,10 @@ type StaffAccess = {
 };
 
 async function submitJson(path: string, method: "POST" | "PATCH", body: unknown) {
-  const response = await fetch(path, {
+  return requestJson(path, {
+    body,
     method,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
   });
-  const payload = await response.json();
-
-  if (!response.ok) {
-    throw new Error(getApiError(payload));
-  }
-
-  return payload;
 }
 
 function StaffRoleSelect({

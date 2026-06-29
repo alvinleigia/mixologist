@@ -5,7 +5,7 @@ import { useState } from "react";
 import { ExternalLinkIcon } from "lucide-react";
 import { toast } from "sonner";
 
-import { getApiError } from "@/lib/api-client";
+import { getCaughtErrorMessage, requestJson } from "@/lib/api-client";
 import { FormField } from "@/components/shared/FormField";
 import { Spinner } from "@/components/shared/Spinner";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,10 @@ type CompanyDomainsPanelProps = {
   domains: CompanyDomain[];
 };
 
+type CompanyDomainsResponse = {
+  domains?: CompanyDomain[];
+};
+
 function normalizeDomainInput(value: string) {
   return value.trim().toLowerCase().replace(/^https?:\/\//, "").split("/")[0].split(":")[0];
 }
@@ -60,20 +64,19 @@ export function CompanyDomainsPanel({
     setIsSubmitting(true);
     setError(null);
 
-    const response = await fetch(apiPath, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        domain: normalizeDomainInput(domain),
-        purpose,
-        isPrimary,
-        isActive: true,
-      }),
-    });
-    const payload = await response.json();
+    let payload: CompanyDomainsResponse;
 
-    if (!response.ok) {
-      const message = getApiError(payload);
+    try {
+      payload = await requestJson(apiPath, {
+        body: {
+          domain: normalizeDomainInput(domain),
+          purpose,
+          isPrimary,
+          isActive: true,
+        },
+      });
+    } catch (caught) {
+      const message = getCaughtErrorMessage(caught);
       setError(message);
       toast.error(message);
       setIsSubmitting(false);
@@ -95,15 +98,15 @@ export function CompanyDomainsPanel({
     setPendingDomainId(domainRecord.id);
     setError(null);
 
-    const response = await fetch(`${apiPath}/${domainRecord.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    });
-    const payload = await response.json();
+    let payload: CompanyDomainsResponse;
 
-    if (!response.ok) {
-      const message = getApiError(payload);
+    try {
+      payload = await requestJson(`${apiPath}/${domainRecord.id}`, {
+        body: input,
+        method: "PATCH",
+      });
+    } catch (caught) {
+      const message = getCaughtErrorMessage(caught);
       setError(message);
       toast.error(message);
       setPendingDomainId(null);

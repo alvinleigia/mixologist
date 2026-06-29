@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { MoreHorizontalIcon } from "lucide-react";
 import { toast } from "sonner";
 
-import { getApiError } from "@/lib/api-client";
+import { getApiError, getCaughtErrorMessage, requestJson } from "@/lib/api-client";
 import { Spinner } from "@/components/shared/Spinner";
 import {
   ReportBreakdown,
@@ -58,6 +58,10 @@ type CompanySummary = {
   activeMenuItems: number;
   activeOrders: number;
   completedOrders: number;
+};
+
+type RestaurantsMutationResponse = {
+  restaurants?: CompanyRestaurant[];
 };
 
 type CompanyRestaurantsPanelProps = {
@@ -154,15 +158,16 @@ export function CompanyRestaurantsPanel({
 
   async function submitJson(path: string, body: unknown, action: string) {
     setPendingAction(action);
-    const response = await fetch(path, {
-      method: path === "/api/company/restaurants" || path.endsWith("/staff") ? "POST" : "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const payload = await response.json();
 
-    if (!response.ok) {
-      const message = getApiError(payload);
+    let payload: RestaurantsMutationResponse;
+
+    try {
+      payload = await requestJson(path, {
+        body,
+        method: path === "/api/company/restaurants" || path.endsWith("/staff") ? "POST" : "PATCH",
+      });
+    } catch (caught) {
+      const message = getCaughtErrorMessage(caught);
       setError(message);
       toast.error(message);
       setPendingAction(null);
