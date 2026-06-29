@@ -23,6 +23,10 @@ export type StaffPrincipal = {
   locationId: string;
 };
 
+type AuthenticateStaffOptions = {
+  platformOnly?: boolean;
+};
+
 function normalizeIdentifier(value: unknown) {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
@@ -30,6 +34,7 @@ function normalizeIdentifier(value: unknown) {
 export async function authenticateStaff(
   identifierValue: unknown,
   passwordValue: unknown,
+  options: AuthenticateStaffOptions = {},
 ) {
   const identifier = normalizeIdentifier(identifierValue);
   const password = typeof passwordValue === "string" ? passwordValue : "";
@@ -49,6 +54,13 @@ export async function authenticateStaff(
   }
 
   const db = getDb();
+  const baseAccessCondition = and(
+    or(eq(users.username, identifier), eq(users.email, identifier)),
+    eq(users.status, "ACTIVE"),
+    eq(memberships.isActive, true),
+    eq(organizations.isActive, true),
+    or(isNull(memberships.locationId), eq(locations.isActive, true)),
+  );
   const [record] = await db
     .select({
       id: users.id,
@@ -70,13 +82,13 @@ export async function authenticateStaff(
     .innerJoin(organizations, eq(organizations.id, memberships.organizationId))
     .leftJoin(locations, eq(locations.id, memberships.locationId))
     .where(
-      and(
-        or(eq(users.username, identifier), eq(users.email, identifier)),
-        eq(users.status, "ACTIVE"),
-        eq(memberships.isActive, true),
-        eq(organizations.isActive, true),
-        or(isNull(memberships.locationId), eq(locations.isActive, true)),
-      ),
+      options.platformOnly
+        ? and(
+            baseAccessCondition,
+            eq(memberships.role, "PLATFORM_ADMIN"),
+            eq(organizations.type, "PLATFORM"),
+          )
+        : baseAccessCondition,
     )
     .limit(1);
 

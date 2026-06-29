@@ -29,6 +29,12 @@ export function buildCompanySubdomain(companySlug: string) {
   return `${companySlug}.${ROOT_DOMAIN}`.toLowerCase();
 }
 
+export function isRootPlatformDomain(domainValue: string | null | undefined) {
+  const domain = normalizeDomain(domainValue);
+
+  return Boolean(domain && domain === normalizeDomain(ROOT_DOMAIN));
+}
+
 export function getRequestDomain(request: Request) {
   return normalizeDomain(
     request.headers.get("x-forwarded-host") ??
@@ -268,7 +274,7 @@ export async function getTenantDomainAccessScopeFromDomain(
 ): Promise<TenantDomainAccessScope> {
   const domain = normalizeDomain(domainValue);
 
-  if (!domain || domain === "localhost" || domain === normalizeDomain(ROOT_DOMAIN)) {
+  if (!domain || domain === "localhost" || isRootPlatformDomain(domain)) {
     return { type: "PLATFORM" };
   }
 

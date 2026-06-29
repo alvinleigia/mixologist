@@ -3,6 +3,7 @@ import Credentials from "next-auth/providers/credentials";
 
 import { authenticateStaff } from "@/lib/staff-auth";
 import { resolveLocationAccess, resolveMembershipAccess } from "@/lib/location-access";
+import { isRootPlatformDomain } from "@/lib/tenant-domains";
 import type { MembershipRole } from "@/lib/staff-auth";
 
 export const { auth, handlers, signIn, signOut, unstable_update } = NextAuth({
@@ -18,8 +19,13 @@ export const { auth, handlers, signIn, signOut, unstable_update } = NextAuth({
         username: { label: "Username", type: "text" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
-        return authenticateStaff(credentials?.username, credentials?.password);
+      async authorize(credentials, request) {
+        const requestHost =
+          request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+
+        return authenticateStaff(credentials?.username, credentials?.password, {
+          platformOnly: isRootPlatformDomain(requestHost),
+        });
       },
     }),
   ],
