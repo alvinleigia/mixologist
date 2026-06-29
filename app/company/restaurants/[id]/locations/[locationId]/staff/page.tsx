@@ -45,6 +45,7 @@ export default async function CompanyRestaurantLocationStaffPage(
       }}
     >
       <LocationStaffPanel
+        assignHref={`/company/users/reassign?restaurantId=${restaurant.id}&locationId=${location.id}&role=ORDER_OPERATOR&returnTo=${encodeURIComponent(`/company/restaurants/${restaurant.id}/locations/${location.id}/staff`)}`}
         backHref={`/company/restaurants/${restaurant.id}/locations`}
         locationId={location.id}
         locationName={location.name}

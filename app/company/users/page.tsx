@@ -32,6 +32,7 @@ export default async function CompanyUsersPage() {
       }}
     >
       <PlatformCompanyUsersPanel
+        assignHref="/company/users/reassign"
         companyId={session.user.organizationId}
         description="All accepted and invited users with access inside this company."
         editHrefBase="/company/users"

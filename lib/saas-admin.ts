@@ -30,6 +30,16 @@ import {
   updateOrganizationAdminSchema,
   updateStaffMembershipSchema,
 } from "@/lib/validations/tenant-admin";
+import type { MembershipRole } from "@/lib/staff-auth";
+import type { TenantContext } from "@/lib/tenant-context";
+
+type ReassignExistingUserOptions = {
+  allowedOrganizationIds?: string[];
+  allowedLocationIds?: string[];
+  allowedRoles?: MembershipRole[];
+  deactivateOrganizationIds?: string[];
+  userScopeOrganizationIds?: string[];
+};
 
 async function ensureUniqueOrganizationSlug(baseName: string) {
   const db = getDb();
@@ -992,6 +1002,142 @@ export async function listPlatformReassignmentTargets() {
     }));
 }
 
+async function getCompanyTreeOrganizationIds(companyOrganizationId: string) {
+  const restaurantRows = await getDb()
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(
+      and(
+        eq(organizations.parentOrganizationId, companyOrganizationId),
+        eq(organizations.type, "RESTAURANT"),
+      ),
+    );
+
+  return [companyOrganizationId, ...restaurantRows.map((restaurant) => restaurant.id)];
+}
+
+export async function listCompanyReassignmentTargets(companyOrganizationId: string) {
+  const targets = await listPlatformReassignmentTargets();
+
+  return targets.filter((company) => company.id === companyOrganizationId);
+}
+
+export async function listCompanyReassignableUsers(companyOrganizationId: string) {
+  const organizationIds = await getCompanyTreeOrganizationIds(companyOrganizationId);
+  const rows = await getDb()
+    .select({
+      id: users.id,
+      username: users.username,
+      name: users.name,
+      email: users.email,
+    })
+    .from(users)
+    .innerJoin(memberships, eq(memberships.userId, users.id))
+    .where(
+      and(
+        eq(users.status, "ACTIVE"),
+        isNotNull(users.passwordHash),
+        inArray(memberships.organizationId, organizationIds),
+      ),
+    );
+  const usersById = new Map(rows.map((user) => [user.id, user]));
+
+  return Array.from(usersById.values()).sort((first, second) =>
+    first.name.localeCompare(second.name),
+  );
+}
+
+export async function listRestaurantReassignmentTargets(context: TenantContext) {
+  const db = getDb();
+  const [restaurant] = await db
+    .select({
+      id: organizations.id,
+      parentOrganizationId: organizations.parentOrganizationId,
+      type: organizations.type,
+      name: organizations.name,
+      slug: organizations.slug,
+      isActive: organizations.isActive,
+    })
+    .from(organizations)
+    .where(eq(organizations.id, context.organizationId))
+    .limit(1);
+
+  if (!restaurant) {
+    return [];
+  }
+
+  const [company] = restaurant.parentOrganizationId
+    ? await db
+        .select({
+          id: organizations.id,
+          parentOrganizationId: organizations.parentOrganizationId,
+          type: organizations.type,
+          name: organizations.name,
+          slug: organizations.slug,
+          isActive: organizations.isActive,
+        })
+        .from(organizations)
+        .where(eq(organizations.id, restaurant.parentOrganizationId))
+        .limit(1)
+    : [];
+
+  const [location] = await db
+    .select({
+      id: locations.id,
+      organizationId: locations.organizationId,
+      name: locations.name,
+      label: locations.label,
+      slug: locations.slug,
+      isActive: locations.isActive,
+    })
+    .from(locations)
+    .where(eq(locations.id, context.locationId))
+    .limit(1);
+
+  return [
+    {
+      ...(company ?? {
+        id: restaurant.id,
+        parentOrganizationId: null,
+        type: "COMPANY" as const,
+        name: restaurant.name,
+        slug: restaurant.slug,
+        isActive: restaurant.isActive,
+      }),
+      restaurants: [
+        {
+          ...restaurant,
+          locations: location ? [location] : [],
+        },
+      ],
+    },
+  ];
+}
+
+export async function listRestaurantReassignableUsers(context: TenantContext) {
+  const rows = await getDb()
+    .select({
+      id: users.id,
+      username: users.username,
+      name: users.name,
+      email: users.email,
+    })
+    .from(users)
+    .innerJoin(memberships, eq(memberships.userId, users.id))
+    .where(
+      and(
+        eq(users.status, "ACTIVE"),
+        isNotNull(users.passwordHash),
+        eq(memberships.organizationId, context.organizationId),
+      ),
+    );
+  const usersById = new Map(rows.map((user) => [user.id, user]));
+
+  return Array.from(usersById.values()).sort((first, second) =>
+    first.name.localeCompare(second.name),
+  );
+}
+
 export async function listPlatformReassignableUsers() {
   const rows = await getDb()
     .select({
@@ -1006,7 +1152,10 @@ export async function listPlatformReassignableUsers() {
   return rows.sort((first, second) => first.name.localeCompare(second.name));
 }
 
-export async function reassignExistingUser(input: unknown) {
+export async function reassignExistingUser(
+  input: unknown,
+  options: ReassignExistingUserOptions = {},
+) {
   const parsed = reassignExistingUserSchema.parse(input);
   const identifier = parsed.identifier.toLowerCase();
   const isCompanyRole =
@@ -1031,6 +1180,20 @@ export async function reassignExistingUser(input: unknown) {
     throw new Error("Target organization is not available.");
   }
 
+  if (
+    options.allowedOrganizationIds?.length &&
+    !options.allowedOrganizationIds.includes(targetOrganization.id)
+  ) {
+    throw new Error("Target organization is outside your access scope.");
+  }
+
+  if (
+    options.allowedRoles?.length &&
+    !options.allowedRoles.includes(parsed.role)
+  ) {
+    throw new Error("Choose a role within your access scope.");
+  }
+
   if (isCompanyRole && targetOrganization.type !== "COMPANY") {
     throw new Error("Company roles must be assigned to a company.");
   }
@@ -1048,6 +1211,13 @@ export async function reassignExistingUser(input: unknown) {
   }
 
   if (parsed.locationId) {
+    if (
+      options.allowedLocationIds?.length &&
+      !options.allowedLocationIds.includes(parsed.locationId)
+    ) {
+      throw new Error("Target location is outside your access scope.");
+    }
+
     const [targetLocation] = await db
       .select({
         id: locations.id,
@@ -1088,6 +1258,23 @@ export async function reassignExistingUser(input: unknown) {
     throw new Error("Only accepted active users can be reassigned. Use an invite for new users.");
   }
 
+  if (options.userScopeOrganizationIds?.length) {
+    const [scopedMembership] = await db
+      .select({ id: memberships.id })
+      .from(memberships)
+      .where(
+        and(
+          eq(memberships.userId, user.id),
+          inArray(memberships.organizationId, options.userScopeOrganizationIds),
+        ),
+      )
+      .limit(1);
+
+    if (!scopedMembership) {
+      throw new Error("User is outside your access scope. Use an invite for new users.");
+    }
+  }
+
   const locationCondition = parsed.locationId
     ? eq(memberships.locationId, parsed.locationId)
     : isNull(memberships.locationId);
@@ -1097,7 +1284,15 @@ export async function reassignExistingUser(input: unknown) {
       ? await tx
           .update(memberships)
           .set({ isActive: false, updatedAt: new Date() })
-          .where(and(eq(memberships.userId, user.id), eq(memberships.isActive, true)))
+          .where(
+            and(
+              eq(memberships.userId, user.id),
+              eq(memberships.isActive, true),
+              options.deactivateOrganizationIds?.length
+                ? inArray(memberships.organizationId, options.deactivateOrganizationIds)
+                : undefined,
+            ),
+          )
           .returning()
       : [];
 
@@ -1141,6 +1336,38 @@ export async function reassignExistingUser(input: unknown) {
       deactivatedMembershipCount: deactivatedMemberships.length,
       targetOrganization,
     };
+  });
+}
+
+export async function reassignExistingUserForCompany(
+  companyOrganizationId: string,
+  input: unknown,
+) {
+  const organizationIds = await getCompanyTreeOrganizationIds(companyOrganizationId);
+
+  return reassignExistingUser(input, {
+    allowedOrganizationIds: organizationIds,
+    allowedRoles: [
+      "COMPANY_OWNER",
+      "COMPANY_MANAGER",
+      "RESTAURANT_MANAGER",
+      "ORDER_OPERATOR",
+    ],
+    deactivateOrganizationIds: organizationIds,
+    userScopeOrganizationIds: organizationIds,
+  });
+}
+
+export async function reassignExistingUserForRestaurant(
+  context: TenantContext,
+  input: unknown,
+) {
+  return reassignExistingUser(input, {
+    allowedLocationIds: [context.locationId],
+    allowedOrganizationIds: [context.organizationId],
+    allowedRoles: ["RESTAURANT_MANAGER", "ORDER_OPERATOR"],
+    deactivateOrganizationIds: [context.organizationId],
+    userScopeOrganizationIds: [context.organizationId],
   });
 }
 

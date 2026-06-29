@@ -50,9 +50,13 @@ type ReassignableUser = {
 };
 
 type ReassignExistingUserFormProps = {
+  apiPath?: string;
   backHref: string;
   initialCompanyId?: string;
+  initialLocationId?: string;
+  initialRestaurantId?: string;
   initialRole?: ReassignRole;
+  roleOptions?: Array<{ label: string; value: ReassignRole }>;
   targets: AssignableCompany[];
   users: ReassignableUser[];
 };
@@ -74,21 +78,29 @@ function isCompanyRole(role: ReassignRole) {
 }
 
 export function ReassignExistingUserForm({
+  apiPath = "/api/platform/users/reassign",
   backHref,
   initialCompanyId,
+  initialLocationId,
+  initialRestaurantId,
   initialRole,
+  roleOptions = roles,
   targets,
   users,
 }: ReassignExistingUserFormProps) {
   const defaultCompany =
     targets.find((company) => company.id === initialCompanyId) ?? targets[0];
-  const defaultRestaurant = defaultCompany?.restaurants[0];
-  const defaultLocation = defaultRestaurant?.locations[0];
+  const defaultRestaurant =
+    defaultCompany?.restaurants.find((restaurant) => restaurant.id === initialRestaurantId) ??
+    defaultCompany?.restaurants[0];
+  const defaultLocation =
+    defaultRestaurant?.locations.find((location) => location.id === initialLocationId) ??
+    defaultRestaurant?.locations[0];
 
   const [identifier, setIdentifier] = useState("");
   const [isIdentifierFocused, setIsIdentifierFocused] = useState(false);
   const [role, setRole] = useState<ReassignRole>(
-    initialRole ?? "ORDER_OPERATOR",
+    initialRole ?? roleOptions[0]?.value ?? "ORDER_OPERATOR",
   );
   const [companyId, setCompanyId] = useState(defaultCompany?.id ?? "");
   const [restaurantId, setRestaurantId] = useState(defaultRestaurant?.id ?? "");
@@ -161,7 +173,7 @@ export function ReassignExistingUserForm({
     const companyRole = isCompanyRole(role);
 
     try {
-      await requestJson("/api/platform/users/reassign", {
+      await requestJson(apiPath, {
         body: {
           identifier,
           role,
@@ -269,7 +281,7 @@ export function ReassignExistingUserForm({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {roles.map((roleOption) => (
+                {roleOptions.map((roleOption) => (
                   <SelectItem key={roleOption.value} value={roleOption.value}>
                     {roleOption.label}
                   </SelectItem>

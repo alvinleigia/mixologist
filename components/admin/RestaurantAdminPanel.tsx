@@ -257,6 +257,9 @@ export function RestaurantAdminPanel() {
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
+                <Button asChild variant="outline" className="rounded-lg">
+                  <Link href="/restaurant/staff/reassign">Assign existing staff</Link>
+                </Button>
                 <Button asChild className="rounded-lg">
                   <Link href="/restaurant/staff/invite">Invite staff</Link>
                 </Button>
