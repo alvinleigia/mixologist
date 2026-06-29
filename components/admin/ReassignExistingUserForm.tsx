@@ -51,6 +51,8 @@ type ReassignableUser = {
 
 type ReassignExistingUserFormProps = {
   backHref: string;
+  initialCompanyId?: string;
+  initialRole?: ReassignRole;
   targets: AssignableCompany[];
   users: ReassignableUser[];
 };
@@ -73,19 +75,24 @@ function isCompanyRole(role: ReassignRole) {
 
 export function ReassignExistingUserForm({
   backHref,
+  initialCompanyId,
+  initialRole,
   targets,
   users,
 }: ReassignExistingUserFormProps) {
+  const defaultCompany =
+    targets.find((company) => company.id === initialCompanyId) ?? targets[0];
+  const defaultRestaurant = defaultCompany?.restaurants[0];
+  const defaultLocation = defaultRestaurant?.locations[0];
+
   const [identifier, setIdentifier] = useState("");
   const [isIdentifierFocused, setIsIdentifierFocused] = useState(false);
-  const [role, setRole] = useState<ReassignRole>("ORDER_OPERATOR");
-  const [companyId, setCompanyId] = useState(targets[0]?.id ?? "");
-  const [restaurantId, setRestaurantId] = useState(
-    targets[0]?.restaurants[0]?.id ?? "",
+  const [role, setRole] = useState<ReassignRole>(
+    initialRole ?? "ORDER_OPERATOR",
   );
-  const [locationId, setLocationId] = useState(
-    targets[0]?.restaurants[0]?.locations[0]?.id ?? "",
-  );
+  const [companyId, setCompanyId] = useState(defaultCompany?.id ?? "");
+  const [restaurantId, setRestaurantId] = useState(defaultRestaurant?.id ?? "");
+  const [locationId, setLocationId] = useState(defaultLocation?.id ?? "");
   const [deactivateExisting, setDeactivateExisting] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);

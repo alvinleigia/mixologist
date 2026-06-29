@@ -23,6 +23,8 @@ export default async function PlatformCompanyUsersPage(
   }
 
   const users = await listCompanyStaffMemberships(company.id);
+  const companyUsersPath = `/platform/companies/${company.id}/users`;
+  const assignHref = `/platform/users/reassign?companyId=${company.id}&role=COMPANY_MANAGER&returnTo=${encodeURIComponent(companyUsersPath)}`;
 
   return (
     <SaasAdminShell
@@ -36,7 +38,11 @@ export default async function PlatformCompanyUsersPage(
         role: session.user.role,
       }}
     >
-      <PlatformCompanyUsersPanel companyId={company.id} users={users} />
+      <PlatformCompanyUsersPanel
+        assignHref={assignHref}
+        companyId={company.id}
+        users={users}
+      />
     </SaasAdminShell>
   );
 }

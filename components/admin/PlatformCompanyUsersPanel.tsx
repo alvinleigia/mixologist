@@ -27,6 +27,7 @@ type CompanyUser = {
 };
 
 type PlatformCompanyUsersPanelProps = {
+  assignHref?: string | null;
   companyId: string;
   description?: string;
   editHrefBase?: string;
@@ -46,6 +47,7 @@ function formatDate(value: string) {
 }
 
 export function PlatformCompanyUsersPanel({
+  assignHref,
   companyId,
   description = "Manage company owner and manager memberships for this tenant.",
   editHrefBase = `/platform/companies/${companyId}/users`,
@@ -62,14 +64,21 @@ export function PlatformCompanyUsersPanel({
           <h3 className="text-xl font-semibold text-stone-950">{title}</h3>
           <p className="text-sm text-stone-500">{description}</p>
         </div>
-        {inviteHref ? (
-          <Button
-            asChild
-            className="rounded-lg bg-stone-950 text-white hover:bg-stone-800"
-          >
-            <Link href={inviteHref}>{inviteLabel}</Link>
-          </Button>
-        ) : null}
+        <div className="flex flex-wrap justify-end gap-3">
+          {assignHref ? (
+            <Button asChild variant="outline" className="rounded-lg">
+              <Link href={assignHref}>Assign Existing User</Link>
+            </Button>
+          ) : null}
+          {inviteHref ? (
+            <Button
+              asChild
+              className="rounded-lg bg-stone-950 text-white hover:bg-stone-800"
+            >
+              <Link href={inviteHref}>{inviteLabel}</Link>
+            </Button>
+          ) : null}
+        </div>
       </CardHeader>
       <CardContent className="grid gap-3 px-5 pb-5">
         {users.length === 0 ? (

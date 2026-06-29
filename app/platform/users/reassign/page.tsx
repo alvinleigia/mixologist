@@ -12,14 +12,38 @@ import {
 function getSafeReturnTo(value: string | string[] | undefined) {
   const returnTo = Array.isArray(value) ? value[0] : value;
 
+  if (!returnTo) {
+    return "/platform/users/memberships";
+  }
+
   if (
     returnTo === "/platform/companies" ||
-    returnTo === "/platform/users/memberships"
+    returnTo === "/platform/users/memberships" ||
+    /^\/platform\/companies\/[0-9a-f-]{36}\/users$/i.test(returnTo)
   ) {
     return returnTo;
   }
 
   return "/platform/users/memberships";
+}
+
+function getSearchParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function getInitialRole(value: string | string[] | undefined) {
+  const role = getSearchParam(value);
+
+  if (
+    role === "COMPANY_OWNER" ||
+    role === "COMPANY_MANAGER" ||
+    role === "RESTAURANT_MANAGER" ||
+    role === "ORDER_OPERATOR"
+  ) {
+    return role;
+  }
+
+  return undefined;
 }
 
 export default async function ReassignPlatformUserPage(
@@ -37,6 +61,8 @@ export default async function ReassignPlatformUserPage(
   ]);
   const searchParams = await props.searchParams;
   const backHref = getSafeReturnTo(searchParams.returnTo);
+  const initialCompanyId = getSearchParam(searchParams.companyId);
+  const initialRole = getInitialRole(searchParams.role);
 
   return (
     <SaasAdminShell
@@ -50,7 +76,13 @@ export default async function ReassignPlatformUserPage(
         role: session.user.role,
       }}
     >
-      <ReassignExistingUserForm backHref={backHref} targets={targets} users={users} />
+      <ReassignExistingUserForm
+        backHref={backHref}
+        initialCompanyId={initialCompanyId}
+        initialRole={initialRole}
+        targets={targets}
+        users={users}
+      />
     </SaasAdminShell>
   );
 }
