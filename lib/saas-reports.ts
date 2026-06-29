@@ -633,8 +633,19 @@ export async function getPlatformCompanyBreakdown() {
           ),
         );
       const childRestaurantIds = childRestaurants.map((restaurant) => restaurant.id);
+      const membershipOrganizationIds = [company.id, ...childRestaurantIds];
 
       if (childRestaurantIds.length === 0) {
+        const staff = await db
+          .select({ value: count() })
+          .from(memberships)
+          .where(
+            and(
+              inArray(memberships.organizationId, membershipOrganizationIds),
+              eq(memberships.isActive, true),
+            ),
+          );
+
         return {
           id: company.id,
           name: company.name,
@@ -642,7 +653,7 @@ export async function getPlatformCompanyBreakdown() {
           isActive: company.isActive,
           childRestaurants: 0,
           activeLocations: 0,
-          activeStaffMemberships: 0,
+          activeStaffMemberships: firstCount(staff),
           activeOrders: 0,
           completedOrders: 0,
           cancelledOrders: 0,
@@ -672,7 +683,7 @@ export async function getPlatformCompanyBreakdown() {
           .from(memberships)
           .where(
             and(
-              inArray(memberships.organizationId, childRestaurantIds),
+              inArray(memberships.organizationId, membershipOrganizationIds),
               eq(memberships.isActive, true),
             ),
           ),
@@ -740,12 +751,23 @@ export async function getCompanySummary(companyOrganizationId: string) {
       ),
     );
   const childRestaurantIds = childRestaurants.map((restaurant) => restaurant.id);
+  const membershipOrganizationIds = [companyOrganizationId, ...childRestaurantIds];
 
   if (childRestaurantIds.length === 0) {
+    const staff = await db
+      .select({ value: count() })
+      .from(memberships)
+      .where(
+        and(
+          inArray(memberships.organizationId, membershipOrganizationIds),
+          eq(memberships.isActive, true),
+        ),
+      );
+
     return {
       childRestaurants: 0,
       activeLocations: 0,
-      activeStaffMemberships: 0,
+      activeStaffMemberships: firstCount(staff),
       activeMenuCategories: 0,
       activeMenuItems: 0,
       activeOrders: 0,
@@ -775,7 +797,7 @@ export async function getCompanySummary(companyOrganizationId: string) {
       .from(memberships)
       .where(
         and(
-          inArray(memberships.organizationId, childRestaurantIds),
+          inArray(memberships.organizationId, membershipOrganizationIds),
           eq(memberships.isActive, true),
         ),
       ),
