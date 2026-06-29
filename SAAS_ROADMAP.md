@@ -67,6 +67,7 @@ Notes:
 
 ## Production Readiness TODOs
 
+- [ ] Add compliance controls for SaaS owner audit-log access: log audit-log views/exports, avoid sensitive metadata, document platform support access in privacy/customer terms and later consider a reason-required support access mode.
 - [ ] Add automated tests for tenant isolation.
 - [ ] Add automated tests for order transitions.
 - [ ] Replace in-memory rate limiting with Redis, Upstash or another shared store.
