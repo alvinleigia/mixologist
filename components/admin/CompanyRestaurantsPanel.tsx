@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { MoreHorizontalIcon } from "lucide-react";
+import { MapPinIcon, MoreHorizontalIcon, PencilIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { fetchJson, getCaughtErrorMessage, requestJson } from "@/lib/api-client";
+import { DesktopQuickAction } from "@/components/shared/DesktopQuickAction";
 import { Spinner } from "@/components/shared/Spinner";
 import {
   ReportBreakdown,
@@ -322,6 +323,16 @@ export function CompanyRestaurantsPanel({
                   <span className="rounded-md border border-stone-200 bg-white px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">
                     {restaurant.isActive ? "Active" : "Disabled"}
                   </span>
+                  <DesktopQuickAction
+                    href={`/company/restaurants/${restaurant.id}`}
+                    icon={PencilIcon}
+                    label={`Edit ${restaurant.name} settings`}
+                  />
+                  <DesktopQuickAction
+                    href={`/company/restaurants/${restaurant.id}/locations`}
+                    icon={MapPinIcon}
+                    label={`Manage locations for ${restaurant.name}`}
+                  />
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button

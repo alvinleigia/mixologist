@@ -1,0 +1,54 @@
+import type { ComponentType } from "react";
+import Link from "next/link";
+
+import { Button } from "@/components/ui/button";
+
+type QuickActionIcon = ComponentType<{ className?: string }>;
+
+type DesktopQuickActionProps = {
+  disabled?: boolean;
+  href?: string;
+  icon: QuickActionIcon;
+  label: string;
+  onClick?: () => void;
+};
+
+const quickActionClassName =
+  "hidden rounded-lg border-stone-300 bg-white text-stone-900 hover:bg-stone-100 md:inline-flex";
+
+export function DesktopQuickAction({
+  disabled,
+  href,
+  icon: Icon,
+  label,
+  onClick,
+}: DesktopQuickActionProps) {
+  if (href) {
+    return (
+      <Button
+        asChild
+        variant="outline"
+        size="icon"
+        className={quickActionClassName}
+      >
+        <Link href={href} aria-label={label}>
+          <Icon className="size-4" />
+        </Link>
+      </Button>
+    );
+  }
+
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="icon"
+      disabled={disabled}
+      className={quickActionClassName}
+      aria-label={label}
+      onClick={onClick}
+    >
+      <Icon className="size-4" />
+    </Button>
+  );
+}

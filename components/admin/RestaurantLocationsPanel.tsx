@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { MoreHorizontalIcon } from "lucide-react";
+import { MoreHorizontalIcon, PencilIcon, UsersIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { getCaughtErrorMessage, requestJson } from "@/lib/api-client";
+import { DesktopQuickAction } from "@/components/shared/DesktopQuickAction";
 import { FormField } from "@/components/shared/FormField";
 import { TimezoneSelect } from "@/components/shared/LocaleSelects";
 import { Button } from "@/components/ui/button";
@@ -276,45 +277,57 @@ export function RestaurantLocationsPanel({
                     QR slug: {location.qrSlug || "Not set"}
                   </p>
                 </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      className="rounded-lg border-stone-300 bg-white text-stone-900 hover:bg-stone-100"
-                      aria-label={`Open actions for ${location.name}`}
-                    >
-                      <MoreHorizontalIcon className="size-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="bg-white text-stone-950">
-                    <DropdownMenuLabel>Location actions</DropdownMenuLabel>
-                    <DropdownMenuItem onSelect={() => setEditingLocationId(location.id)}>
-                      Edit location
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <Link
-                        href={`/company/restaurants/${restaurantId}/locations/${location.id}/staff`}
+                <div className="flex items-center gap-2">
+                  <DesktopQuickAction
+                    icon={PencilIcon}
+                    label={`Edit ${location.name}`}
+                    onClick={() => setEditingLocationId(location.id)}
+                  />
+                  <DesktopQuickAction
+                    href={`/company/restaurants/${restaurantId}/locations/${location.id}/staff`}
+                    icon={UsersIcon}
+                    label={`Manage staff for ${location.name}`}
+                  />
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="rounded-lg border-stone-300 bg-white text-stone-900 hover:bg-stone-100"
+                        aria-label={`Open actions for ${location.name}`}
                       >
-                        Manage staff
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator className="bg-stone-200" />
-                    <DropdownMenuItem
-                      variant={location.isActive ? "destructive" : "default"}
-                      onSelect={() =>
-                        void submitLocation(
-                          `/api/company/restaurants/${restaurantId}/locations/${location.id}`,
-                          { ...toDraft(location), isActive: !location.isActive },
-                          `toggle:${location.id}`,
-                        )
-                      }
-                    >
-                      {location.isActive ? "Disable location" : "Enable location"}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                        <MoreHorizontalIcon className="size-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="bg-white text-stone-950">
+                      <DropdownMenuLabel>Location actions</DropdownMenuLabel>
+                      <DropdownMenuItem onSelect={() => setEditingLocationId(location.id)}>
+                        Edit location
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link
+                          href={`/company/restaurants/${restaurantId}/locations/${location.id}/staff`}
+                        >
+                          Manage staff
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator className="bg-stone-200" />
+                      <DropdownMenuItem
+                        variant={location.isActive ? "destructive" : "default"}
+                        onSelect={() =>
+                          void submitLocation(
+                            `/api/company/restaurants/${restaurantId}/locations/${location.id}`,
+                            { ...toDraft(location), isActive: !location.isActive },
+                            `toggle:${location.id}`,
+                          )
+                        }
+                      >
+                        {location.isActive ? "Disable location" : "Enable location"}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </div>
             );
           })}

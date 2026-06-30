@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { MoreHorizontalIcon } from "lucide-react";
+import { MoreHorizontalIcon, PencilIcon } from "lucide-react";
 
+import { DesktopQuickAction } from "@/components/shared/DesktopQuickAction";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
@@ -95,29 +96,36 @@ export function LocationStaffPanel({
                   {formatAppDate(user.updatedAt)}
                 </p>
               </div>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="rounded-lg border-stone-300 bg-white text-stone-900 hover:bg-stone-100"
-                    aria-label={`Open actions for ${user.name}`}
-                  >
-                    <MoreHorizontalIcon className="size-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="bg-white text-stone-950">
-                  <DropdownMenuLabel>Staff actions</DropdownMenuLabel>
-                  <DropdownMenuItem asChild>
-                    <Link
-                      href={`/company/users/${user.membershipId}?returnTo=${encodeURIComponent(currentHref)}`}
+              <div className="flex items-center gap-2">
+                <DesktopQuickAction
+                  href={`/company/users/${user.membershipId}?returnTo=${encodeURIComponent(currentHref)}`}
+                  icon={PencilIcon}
+                  label={`Edit access for ${user.name}`}
+                />
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="rounded-lg border-stone-300 bg-white text-stone-900 hover:bg-stone-100"
+                      aria-label={`Open actions for ${user.name}`}
                     >
-                      Edit access
-                    </Link>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                      <MoreHorizontalIcon className="size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="bg-white text-stone-950">
+                    <DropdownMenuLabel>Staff actions</DropdownMenuLabel>
+                    <DropdownMenuItem asChild>
+                      <Link
+                        href={`/company/users/${user.membershipId}?returnTo=${encodeURIComponent(currentHref)}`}
+                      >
+                        Edit access
+                      </Link>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
           ))}
         </CardContent>

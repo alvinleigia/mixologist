@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { MoreHorizontalIcon } from "lucide-react";
+import { MoreHorizontalIcon, PencilIcon } from "lucide-react";
 
 import { fetchJson, getCaughtErrorMessage } from "@/lib/api-client";
 import { OperationalReports } from "@/components/admin/OperationalReports";
+import { DesktopQuickAction } from "@/components/shared/DesktopQuickAction";
 import { SummaryCards } from "@/components/admin/SummaryCards";
 import { SectionHeader } from "@/components/shared/SectionHeader";
 import { Spinner } from "@/components/shared/Spinner";
@@ -291,27 +292,34 @@ export function RestaurantAdminPanel() {
                       {staff.role.replaceAll("_", " ")} - {staff.status}
                     </p>
                   </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        className="rounded-lg border-stone-300 bg-white text-stone-900 hover:bg-stone-100"
-                        aria-label={`Open actions for ${staff.name}`}
-                      >
-                        <MoreHorizontalIcon className="size-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="bg-white text-stone-950">
-                      <DropdownMenuLabel>Staff actions</DropdownMenuLabel>
-                      <DropdownMenuItem asChild>
-                        <Link href={`/restaurant/staff/${staff.membershipId}`}>
-                          Edit access
-                        </Link>
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <div className="flex items-center gap-2">
+                    <DesktopQuickAction
+                      href={`/restaurant/staff/${staff.membershipId}`}
+                      icon={PencilIcon}
+                      label={`Edit access for ${staff.name}`}
+                    />
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="rounded-lg border-stone-300 bg-white text-stone-900 hover:bg-stone-100"
+                          aria-label={`Open actions for ${staff.name}`}
+                        >
+                          <MoreHorizontalIcon className="size-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="bg-white text-stone-950">
+                        <DropdownMenuLabel>Staff actions</DropdownMenuLabel>
+                        <DropdownMenuItem asChild>
+                          <Link href={`/restaurant/staff/${staff.membershipId}`}>
+                            Edit access
+                          </Link>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </div>
               ))}
             </CardContent>

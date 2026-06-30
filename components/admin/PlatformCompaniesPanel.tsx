@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { MoreHorizontalIcon } from "lucide-react";
+import { MoreHorizontalIcon, PencilIcon, UserPlusIcon } from "lucide-react";
 
 import { fetchJson, getCaughtErrorMessage } from "@/lib/api-client";
+import { DesktopQuickAction } from "@/components/shared/DesktopQuickAction";
 import { Spinner } from "@/components/shared/Spinner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -145,6 +146,16 @@ export function PlatformCompaniesPanel() {
                   <span className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-amber-800">
                     {company.subscription?.status ?? "No subscription"}
                   </span>
+                  <DesktopQuickAction
+                    href={`/platform/companies/${company.id}`}
+                    icon={PencilIcon}
+                    label={`Edit ${company.name} details`}
+                  />
+                  <DesktopQuickAction
+                    href={`/platform/companies/${company.id}/staff/invite`}
+                    icon={UserPlusIcon}
+                    label={`Invite user to ${company.name}`}
+                  />
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
