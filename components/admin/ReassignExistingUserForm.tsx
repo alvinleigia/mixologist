@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { UserCheckIcon, XIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -92,6 +93,7 @@ export function ReassignExistingUserForm({
   targets,
   users,
 }: ReassignExistingUserFormProps) {
+  const router = useRouter();
   const defaultCompany =
     targets.find((company) => company.id === initialCompanyId) ?? targets[0];
   const defaultRestaurant =
@@ -198,6 +200,7 @@ export function ReassignExistingUserForm({
     setError(null);
     setIsSubmitting(false);
     toast.success("User reassigned.");
+    router.replace(backHref);
   }
 
   const companyRole = isCompanyRole(role);
