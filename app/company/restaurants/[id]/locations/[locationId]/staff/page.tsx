@@ -4,7 +4,7 @@ import { auth } from "@/auth";
 import { LocationStaffPanel } from "@/components/admin/LocationStaffPanel";
 import { SaasAdminShell } from "@/components/admin/SaasAdminShell";
 import { canAccessRole, companyAdminRoles } from "@/lib/role-access";
-import { getCompanyRestaurant } from "@/lib/saas-admin";
+import { getCompanyRestaurant, listCompanyUserMemberships } from "@/lib/saas-admin";
 
 export default async function CompanyRestaurantLocationStaffPage(
   props: PageProps<"/company/restaurants/[id]/locations/[locationId]/staff">,
@@ -32,6 +32,11 @@ export default async function CompanyRestaurantLocationStaffPage(
     notFound();
   }
 
+  const currentHref = `/company/restaurants/${restaurant.id}/locations/${location.id}/staff`;
+  const staff = (await listCompanyUserMemberships(session.user.organizationId)).filter(
+    (user) => user.locationId === location.id,
+  );
+
   return (
     <SaasAdminShell
       activePath="/company"
@@ -45,11 +50,12 @@ export default async function CompanyRestaurantLocationStaffPage(
       }}
     >
       <LocationStaffPanel
-        assignHref={`/company/users/reassign?restaurantId=${restaurant.id}&locationId=${location.id}&role=ORDER_OPERATOR&returnTo=${encodeURIComponent(`/company/restaurants/${restaurant.id}/locations/${location.id}/staff`)}`}
+        assignHref={`/company/users/reassign?restaurantId=${restaurant.id}&locationId=${location.id}&role=ORDER_OPERATOR&returnTo=${encodeURIComponent(currentHref)}`}
         backHref={`/company/restaurants/${restaurant.id}/locations`}
-        locationId={location.id}
+        currentHref={currentHref}
+        inviteHref={`${currentHref}/invite`}
         locationName={location.name}
-        restaurantId={restaurant.id}
+        staff={staff}
       />
     </SaasAdminShell>
   );

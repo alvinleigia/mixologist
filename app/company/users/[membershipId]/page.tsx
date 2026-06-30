@@ -7,6 +7,27 @@ import { StaffUserAccessForm } from "@/components/admin/StaffUserAccessForm";
 import { canAccessRole, companyAdminRoles } from "@/lib/role-access";
 import { getCompanyUserMembership } from "@/lib/saas-admin";
 
+function getSearchParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function getSafeReturnTo(value: string | string[] | undefined) {
+  const returnTo = getSearchParam(value);
+
+  if (!returnTo) {
+    return "/company/users";
+  }
+
+  if (
+    returnTo === "/company/users" ||
+    /^\/company\/restaurants\/[0-9a-f-]{36}\/locations\/[0-9a-f-]{36}\/staff$/i.test(returnTo)
+  ) {
+    return returnTo;
+  }
+
+  return "/company/users";
+}
+
 export default async function CompanyUserAccessPage(
   props: PageProps<"/company/users/[membershipId]">,
 ) {
@@ -30,7 +51,8 @@ export default async function CompanyUserAccessPage(
     notFound();
   }
 
-  const usersHref = "/company/users";
+  const searchParams = await props.searchParams;
+  const usersHref = getSafeReturnTo(searchParams.returnTo);
   const apiPath = `/api/company/users/${companyUser.membershipId}`;
 
   return (
