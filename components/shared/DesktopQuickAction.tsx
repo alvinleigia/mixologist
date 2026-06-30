@@ -35,7 +35,6 @@ export function DesktopQuickAction({
       variant="outline"
       size="icon"
       className={quickActionClassName}
-      title={label}
     >
       <Link href={href} aria-label={label}>
         <Icon className="size-4" />
@@ -49,7 +48,6 @@ export function DesktopQuickAction({
       disabled={disabled}
       className={quickActionClassName}
       aria-label={label}
-      title={label}
       onClick={onClick}
     >
       <Icon className="size-4" />
