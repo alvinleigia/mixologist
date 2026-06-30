@@ -740,22 +740,59 @@ export function OrderForm({ locationQrSlug, locationSlug, onOrderCreated }: Orde
                                   <p className="mt-3 text-sm font-semibold text-stone-950">
                                     {formatPrice(drink.price ?? null, { currency })}
                                   </p>
-                                  <Button
-                                    type="button"
-                                    variant={cartItem ? "default" : "outline"}
-                                    onClick={() => addToCart(category, drink)}
-                                    disabled={isSubmitting || isUnavailable}
-                                    className={
-                                      isUnavailable
-                                        ? "mt-3 h-9 rounded-lg border-stone-300 bg-stone-100 px-4 text-stone-400"
-                                        : cartItem
-                                        ? "mt-3 h-9 rounded-lg bg-stone-950 px-4 text-white hover:bg-stone-800"
-                                        : "mt-3 h-9 rounded-lg border-stone-300 bg-white px-4 text-stone-700 hover:bg-stone-100"
-                                    }
-                                  >
-                                    {!isUnavailable ? <PlusIcon className="size-4" /> : null}
-                                    {isUnavailable ? unavailableLabel : cartItem ? "Add More" : "Add"}
-                                  </Button>
+                                  {cartItem ? (
+                                    <div className="mt-3 inline-flex items-center overflow-hidden rounded-lg border border-emerald-200 bg-white shadow-sm">
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        onClick={() =>
+                                          updateCartItem(drink.id, (current) =>
+                                            current.quantity <= 1
+                                              ? null
+                                              : { ...current, quantity: current.quantity - 1 },
+                                          )
+                                        }
+                                        disabled={isSubmitting}
+                                        aria-label={`Reduce ${drink.name} quantity`}
+                                        className="h-9 rounded-none px-3 text-emerald-900 hover:bg-emerald-50"
+                                      >
+                                        <MinusIcon className="size-4" />
+                                      </Button>
+                                      <span className="min-w-10 px-3 text-center text-sm font-semibold text-stone-950">
+                                        {cartItem.quantity}
+                                      </span>
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        onClick={() =>
+                                          updateCartItem(drink.id, (current) => ({
+                                            ...current,
+                                            quantity: Math.min(current.quantity + 1, 20),
+                                          }))
+                                        }
+                                        disabled={isSubmitting || isUnavailable}
+                                        aria-label={`Increase ${drink.name} quantity`}
+                                        className="h-9 rounded-none px-3 text-emerald-900 hover:bg-emerald-50 disabled:text-stone-300"
+                                      >
+                                        <PlusIcon className="size-4" />
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      onClick={() => addToCart(category, drink)}
+                                      disabled={isSubmitting || isUnavailable}
+                                      className={
+                                        isUnavailable
+                                          ? "mt-3 h-9 rounded-lg border-stone-300 bg-stone-100 px-4 text-stone-400"
+                                          : "mt-3 h-9 rounded-lg border-stone-300 bg-white px-4 text-stone-700 hover:bg-stone-100"
+                                      }
+                                    >
+                                      {!isUnavailable ? <PlusIcon className="size-4" /> : null}
+                                      {isUnavailable ? unavailableLabel : "Add"}
+                                    </Button>
+                                  )}
                                 </div>
 
                                 <div className="relative aspect-square overflow-hidden rounded-lg bg-stone-100">
