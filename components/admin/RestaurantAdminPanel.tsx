@@ -336,6 +336,13 @@ export function RestaurantAdminPanel() {
                             Edit access
                           </Link>
                         </DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                          <Link
+                            href={`/users/${staff.membershipId}/reset-password?returnTo=/restaurant`}
+                          >
+                            Create reset link
+                          </Link>
+                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>

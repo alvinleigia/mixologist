@@ -110,6 +110,11 @@ export const acceptStaffInvitationSchema = z.object({
   password: z.string().optional(),
 });
 
+export const resetPasswordSchema = z.object({
+  token: z.string().trim().min(20),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+});
+
 export const createCompanyOrganizationSchema = z.object({
   name: z.string().trim().min(2, "Company name is required").max(120),
   timezone: timezoneSchema.default("Asia/Calcutta"),

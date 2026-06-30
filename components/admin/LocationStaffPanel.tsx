@@ -134,6 +134,13 @@ export function LocationStaffPanel({
                         Edit access
                       </Link>
                     </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link
+                        href={`/users/${user.membershipId}/reset-password?returnTo=${encodeURIComponent(currentHref)}`}
+                      >
+                        Create reset link
+                      </Link>
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>

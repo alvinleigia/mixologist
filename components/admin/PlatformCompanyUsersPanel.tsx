@@ -53,6 +53,10 @@ function formatDate(value: string) {
   return formatAppDate(value);
 }
 
+function getResetHref(membershipId: string, returnTo: string) {
+  return `/users/${membershipId}/reset-password?returnTo=${encodeURIComponent(returnTo)}`;
+}
+
 export function PlatformCompanyUsersPanel({
   assignHref,
   companyId,
@@ -140,10 +144,15 @@ export function PlatformCompanyUsersPanel({
                     <MoreHorizontalIcon className="size-4" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="bg-white text-stone-950">
+              <DropdownMenuContent align="end" className="bg-white text-stone-950">
                   <DropdownMenuLabel>User actions</DropdownMenuLabel>
                   <DropdownMenuItem asChild>
                     <Link href={`${editHrefBase}/${user.membershipId}`}>Edit access</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href={getResetHref(user.membershipId, editHrefBase)}>
+                      Create reset link
+                    </Link>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
