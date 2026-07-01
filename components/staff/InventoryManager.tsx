@@ -6,7 +6,9 @@ import {
   CircleOffIcon,
   PackageCheckIcon,
   PackageXIcon,
+  PencilLineIcon,
   SaveIcon,
+  XIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -79,6 +81,7 @@ export function InventoryManager() {
   const [inventory, setInventory] = useState<InventoryRecord[]>([]);
   const [drafts, setDrafts] = useState<Record<string, InventoryDraft>>({});
   const [error, setError] = useState<string | null>(null);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
 
@@ -138,6 +141,10 @@ export function InventoryManager() {
   }, []);
 
   function updateDraft(menuItemId: string, patch: Partial<InventoryDraft>) {
+    if (editingItemId !== menuItemId) {
+      return;
+    }
+
     setDrafts((current) => ({
       ...current,
       [menuItemId]: {
@@ -151,6 +158,24 @@ export function InventoryManager() {
         ...patch,
       },
     }));
+  }
+
+  function startEditing(record: InventoryRecord) {
+    setDrafts((current) => ({
+      ...current,
+      [record.menuItemId]: toDraft(record),
+    }));
+    setEditingItemId(record.menuItemId);
+    setError(null);
+  }
+
+  function cancelEditing(record: InventoryRecord) {
+    setDrafts((current) => ({
+      ...current,
+      [record.menuItemId]: toDraft(record),
+    }));
+    setEditingItemId(null);
+    setError(null);
   }
 
   async function saveInventory(record: InventoryRecord) {
@@ -182,6 +207,7 @@ export function InventoryManager() {
         nextInventory.map((item: InventoryRecord) => [item.menuItemId, toDraft(item)]),
       ),
     );
+    setEditingItemId(null);
     setError(null);
     setPendingAction(null);
     toast.success(`${record.itemName} inventory updated.`);
@@ -261,6 +287,9 @@ export function InventoryManager() {
                   <div className="space-y-3">
                     {group.items.map((record) => {
                       const draft = drafts[record.menuItemId] ?? toDraft(record);
+                      const isEditing = editingItemId === record.menuItemId;
+                      const isAnotherItemEditing = editingItemId !== null && !isEditing;
+                      const isSaving = pendingAction === record.menuItemId;
                       const StatusIcon = statusConfig[record.status].icon;
 
                       return (
@@ -268,7 +297,7 @@ export function InventoryManager() {
                           key={record.menuItemId}
                           className="rounded-lg border border-stone-200 bg-stone-50 p-4"
                         >
-                          <div className="flex flex-wrap items-start justify-between gap-4">
+                          <div>
                             <div>
                               <div className="flex flex-wrap items-center gap-2">
                                 <p className="text-lg font-semibold text-stone-950">
@@ -290,20 +319,6 @@ export function InventoryManager() {
                                 Current stock: {formatQuantity(record.currentQuantity)} {record.unit}
                               </p>
                             </div>
-
-                            <Button
-                              type="button"
-                              onClick={() => void saveInventory(record)}
-                              disabled={pendingAction === record.menuItemId}
-                              className="min-h-10 rounded-lg bg-stone-950 text-white hover:bg-stone-800"
-                            >
-                              {pendingAction === record.menuItemId ? (
-                                <Spinner className="text-white" />
-                              ) : (
-                                <SaveIcon className="size-4" />
-                              )}
-                              Save
-                            </Button>
                           </div>
 
                           <div className="mt-4 grid gap-4 md:grid-cols-4">
@@ -313,6 +328,7 @@ export function InventoryManager() {
                                 min="0"
                                 step="0.01"
                                 value={draft.currentQuantity}
+                                disabled={!isEditing || isSaving}
                                 onChange={(event) =>
                                   updateDraft(record.menuItemId, {
                                     currentQuantity: event.target.value,
@@ -326,6 +342,7 @@ export function InventoryManager() {
                                 min="0"
                                 step="0.01"
                                 value={draft.lowStockThreshold}
+                                disabled={!isEditing || isSaving}
                                 onChange={(event) =>
                                   updateDraft(record.menuItemId, {
                                     lowStockThreshold: event.target.value,
@@ -336,6 +353,7 @@ export function InventoryManager() {
                             <FormField label="Unit">
                               <Input
                                 value={draft.unit}
+                                disabled={!isEditing || isSaving}
                                 onChange={(event) =>
                                   updateDraft(record.menuItemId, { unit: event.target.value })
                                 }
@@ -344,6 +362,7 @@ export function InventoryManager() {
                             <label className="flex items-center gap-3 rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-700 md:mt-6">
                               <Checkbox
                                 checked={draft.isTracked}
+                                disabled={!isEditing || isSaving}
                                 onCheckedChange={(checked) =>
                                   updateDraft(record.menuItemId, {
                                     isTracked: checked === true,
@@ -359,12 +378,54 @@ export function InventoryManager() {
                               <Textarea
                                 rows={2}
                                 value={draft.notes}
+                                disabled={!isEditing || isSaving}
                                 onChange={(event) =>
                                   updateDraft(record.menuItemId, { notes: event.target.value })
                                 }
                                 placeholder="Supplier, storage notes, batch reminders..."
                               />
                             </FormField>
+                          </div>
+
+                          <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+                            {isEditing ? (
+                              <>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  onClick={() => cancelEditing(record)}
+                                  disabled={isSaving}
+                                  className="min-h-10 rounded-lg"
+                                >
+                                  <XIcon className="size-4" />
+                                  Cancel
+                                </Button>
+                                <Button
+                                  type="button"
+                                  onClick={() => void saveInventory(record)}
+                                  disabled={isSaving}
+                                  className="min-h-10 rounded-lg bg-stone-950 text-white hover:bg-stone-800"
+                                >
+                                  {isSaving ? (
+                                    <Spinner className="text-white" />
+                                  ) : (
+                                    <SaveIcon className="size-4" />
+                                  )}
+                                  Save
+                                </Button>
+                              </>
+                            ) : (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => startEditing(record)}
+                                disabled={Boolean(pendingAction) || isAnotherItemEditing}
+                                className="min-h-10 rounded-lg"
+                              >
+                                <PencilLineIcon className="size-4" />
+                                Edit inventory
+                              </Button>
+                            )}
                           </div>
                         </div>
                       );
