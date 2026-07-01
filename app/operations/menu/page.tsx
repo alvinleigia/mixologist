@@ -8,6 +8,7 @@ import { OperationsSetupRequired } from "@/components/staff/OperationsSetupRequi
 import { AppHeader } from "@/components/shared/AppHeader";
 import { AppShell } from "@/components/shared/AppShell";
 import { getTenantSubscriptionAccess } from "@/lib/billing";
+import { isSessionAccessAllowedForCurrentDomain } from "@/lib/domain-session";
 import { canAccessRole, restaurantAdminRoles } from "@/lib/role-access";
 
 export default async function OperationsMenuPage() {
@@ -15,6 +16,10 @@ export default async function OperationsMenuPage() {
 
   if (!session?.user?.role || !canAccessRole(session.user.role, restaurantAdminRoles)) {
     redirect("/staff/login");
+  }
+
+  if (!(await isSessionAccessAllowedForCurrentDomain(session.user))) {
+    redirect("/dashboard");
   }
 
   const hasLocationAccess = Boolean(

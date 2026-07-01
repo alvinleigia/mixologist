@@ -3,25 +3,28 @@ import { z } from "zod";
 
 import { auth, unstable_update } from "@/auth";
 import { getLocationAccessOptions, resolveLocationAccess } from "@/lib/location-access";
+import { getTenantDomainAccessScopeFromRequest } from "@/lib/tenant-domains";
 
 const switchLocationSchema = z.object({
   organizationId: z.string().uuid(),
   locationId: z.string().uuid(),
 });
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await auth();
 
   if (!session?.user.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const accessScope = await getTenantDomainAccessScopeFromRequest(request);
+
   return NextResponse.json({
     active: {
       organizationId: session.user.organizationId,
       locationId: session.user.locationId,
     },
-    locations: await getLocationAccessOptions(session.user.id),
+    locations: await getLocationAccessOptions(session.user.id, accessScope),
   });
 }
 
@@ -42,6 +45,7 @@ export async function PATCH(request: Request) {
     session.user.id,
     parsed.data.organizationId,
     parsed.data.locationId,
+    await getTenantDomainAccessScopeFromRequest(request),
   );
 
   if (!access) {

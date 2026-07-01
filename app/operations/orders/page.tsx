@@ -8,6 +8,7 @@ import { StaffOrderBoard } from "@/components/staff/StaffOrderBoard";
 import { AppHeader } from "@/components/shared/AppHeader";
 import { AppShell } from "@/components/shared/AppShell";
 import { getTenantSubscriptionAccess } from "@/lib/billing";
+import { isSessionAccessAllowedForCurrentDomain } from "@/lib/domain-session";
 import { canAccessRole, operationalRoles } from "@/lib/role-access";
 
 export default async function OperationsOrdersPage() {
@@ -15,6 +16,10 @@ export default async function OperationsOrdersPage() {
 
   if (!session?.user?.role || !canAccessRole(session.user.role, operationalRoles)) {
     redirect("/staff/login");
+  }
+
+  if (!(await isSessionAccessAllowedForCurrentDomain(session.user))) {
+    redirect("/dashboard");
   }
 
   const hasLocationAccess = Boolean(

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { RestaurantAdminPanel } from "@/components/admin/RestaurantAdminPanel";
 import { SaasAdminShell } from "@/components/admin/SaasAdminShell";
+import { isSessionAccessAllowedForCurrentDomain } from "@/lib/domain-session";
 import { canAccessRole, restaurantAdminRoles } from "@/lib/role-access";
 
 export default async function RestaurantPage() {
@@ -10,6 +11,10 @@ export default async function RestaurantPage() {
 
   if (!session?.user?.role || !canAccessRole(session.user.role, restaurantAdminRoles)) {
     redirect("/staff/login");
+  }
+
+  if (!(await isSessionAccessAllowedForCurrentDomain(session.user))) {
+    redirect("/dashboard");
   }
 
   return (

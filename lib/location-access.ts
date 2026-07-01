@@ -30,6 +30,11 @@ type MembershipAccessRow = MembershipAccessOption & {
   parentOrganizationId: string | null;
 };
 
+type LocationAccessRow = LocationAccessOption & {
+  organizationType: "PLATFORM" | "COMPANY" | "RESTAURANT";
+  parentOrganizationId: string | null;
+};
+
 function isMembershipAllowedInScope(
   option: MembershipAccessRow,
   scope?: TenantDomainAccessScope,
@@ -63,6 +68,18 @@ function stripScopeMetadata(option: MembershipAccessRow): MembershipAccessOption
     organizationId: option.organizationId,
     organizationName: option.organizationName,
     organizationType: option.organizationType,
+    locationId: option.locationId,
+    locationName: option.locationName,
+    locationLabel: option.locationLabel,
+  };
+}
+
+function stripLocationScopeMetadata(option: LocationAccessRow): LocationAccessOption {
+  return {
+    membershipId: option.membershipId,
+    role: option.role,
+    organizationId: option.organizationId,
+    organizationName: option.organizationName,
     locationId: option.locationId,
     locationName: option.locationName,
     locationLabel: option.locationLabel,
@@ -138,13 +155,18 @@ export async function resolveMembershipAccess(
   return stripScopeMetadata(option);
 }
 
-export async function getLocationAccessOptions(userId: string) {
+export async function getLocationAccessOptions(
+  userId: string,
+  scope?: TenantDomainAccessScope,
+) {
   const rows = await getDb()
     .select({
       membershipId: memberships.id,
       role: memberships.role,
       organizationId: organizations.id,
       organizationName: organizations.name,
+      organizationType: organizations.type,
+      parentOrganizationId: organizations.parentOrganizationId,
       locationId: locations.id,
       locationName: locations.name,
       locationLabel: locations.label,
@@ -162,13 +184,16 @@ export async function getLocationAccessOptions(userId: string) {
       ),
     );
 
-  return rows;
+  return rows
+    .filter((row) => isMembershipAllowedInScope(row, scope))
+    .map(stripLocationScopeMetadata);
 }
 
 export async function resolveLocationAccess(
   userId: string,
   organizationId: string,
   locationId: string,
+  scope?: TenantDomainAccessScope,
 ) {
   const [option] = await getDb()
     .select({
@@ -176,6 +201,8 @@ export async function resolveLocationAccess(
       role: memberships.role,
       organizationId: organizations.id,
       organizationName: organizations.name,
+      organizationType: organizations.type,
+      parentOrganizationId: organizations.parentOrganizationId,
       locationId: locations.id,
       locationName: locations.name,
       locationLabel: locations.label,
@@ -195,5 +222,9 @@ export async function resolveLocationAccess(
     )
     .limit(1);
 
-  return option ?? null;
+  if (!option || !isMembershipAllowedInScope(option, scope)) {
+    return null;
+  }
+
+  return stripLocationScopeMetadata(option);
 }
