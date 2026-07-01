@@ -126,12 +126,19 @@ export function RestaurantAdminPanel({
       try {
         const [payload, summaryPayload] = await Promise.all([
           fetchJson<TenantAdminSnapshot>("/api/tenant/admin"),
-          fetchJson<RestaurantSummaryResponse>("/api/tenant/summary?range=30d").catch(() => null),
+          view === "dashboard"
+            ? fetchJson<RestaurantSummaryResponse>("/api/tenant/summary?range=30d").catch(
+                () => null,
+              )
+            : Promise.resolve(null),
         ]);
 
         if (summaryPayload) {
           setSummary(summaryPayload.summary ?? null);
           setReport(summaryPayload.report ?? null);
+        } else {
+          setSummary(null);
+          setReport(null);
         }
 
         setSnapshot(payload);
@@ -143,7 +150,7 @@ export function RestaurantAdminPanel({
     }
 
     void loadTenantAdmin();
-  }, []);
+  }, [view]);
 
   async function refreshReport(nextRange: ReportRange) {
     setReportRange(nextRange);
@@ -173,7 +180,7 @@ export function RestaurantAdminPanel({
 
       {snapshot ? (
         <>
-          {summary ? (
+          {view === "dashboard" && summary ? (
             <SummaryCards
               cards={[
                 {
@@ -210,7 +217,7 @@ export function RestaurantAdminPanel({
             />
           ) : null}
 
-          {report ? (
+          {view === "dashboard" && report ? (
             <OperationalReports
               exportHref={`/api/tenant/reports/export?range=${reportRange}`}
               isLoading={isReportLoading}
@@ -253,92 +260,92 @@ export function RestaurantAdminPanel({
           ) : null}
 
           {view === "staff" ? (
-          <Card className="rounded-xl border-stone-200 bg-white">
-            <CardHeader className="flex flex-row items-start justify-between gap-4 px-5 pt-5">
-              <div>
-                <h3 className="text-xl font-semibold text-stone-950">Staff users</h3>
-                <p className="mt-1 text-sm text-stone-500">
-                  Existing users assigned to this location.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button asChild variant="outline" className="rounded-lg">
-                  <Link href="/restaurant/staff/reassign">
-                    <ButtonLabel icon={UserCheckIcon}>Assign existing staff</ButtonLabel>
-                  </Link>
-                </Button>
-                <Button asChild className="rounded-lg">
-                  <Link href="/restaurant/staff/invite">
-                    <ButtonLabel icon={UserPlusIcon}>Invite staff</ButtonLabel>
-                  </Link>
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="grid gap-3 px-5 pb-5">
-              {snapshot.staff.length === 0 ? (
-                <p className="rounded-lg border border-dashed border-stone-200 p-4 text-sm text-stone-500">
-                  No staff users yet.
-                </p>
-              ) : null}
-
-              {snapshot.staff.map((staff) => (
-                <div
-                  key={staff.membershipId}
-                  className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-stone-200 bg-stone-50 p-4"
-                >
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-semibold text-stone-950">{staff.name}</p>
-                      <span className="rounded-md border border-stone-200 bg-white px-2 py-0.5 text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">
-                        {staff.isActive ? "Active" : "Disabled"}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-sm text-stone-500">
-                      {staff.username} - {staff.email}
-                    </p>
-                    <p className="mt-1 text-xs text-stone-400">
-                      {staff.role.replaceAll("_", " ")} - {staff.status}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <DesktopQuickAction
-                      href={`/restaurant/staff/${staff.membershipId}`}
-                      icon={PencilIcon}
-                      label={`Edit access for ${staff.name}`}
-                    />
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon"
-                          className="rounded-lg border-stone-300 bg-white text-stone-900 hover:bg-stone-100"
-                          aria-label={`Open actions for ${staff.name}`}
-                        >
-                          <MoreHorizontalIcon className="size-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="bg-white text-stone-950">
-                        <DropdownMenuLabel>Staff actions</DropdownMenuLabel>
-                        <DropdownMenuItem asChild>
-                          <Link href={`/restaurant/staff/${staff.membershipId}`}>
-                            Edit access
-                          </Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem asChild>
-                          <Link
-                            href={`/users/${staff.membershipId}/reset-password?returnTo=/restaurant`}
-                          >
-                            Create reset link
-                          </Link>
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
+            <Card className="rounded-xl border-stone-200 bg-white">
+              <CardHeader className="flex flex-row items-start justify-between gap-4 px-5 pt-5">
+                <div>
+                  <h3 className="text-xl font-semibold text-stone-950">Staff users</h3>
+                  <p className="mt-1 text-sm text-stone-500">
+                    Existing users assigned to this location.
+                  </p>
                 </div>
-              ))}
-            </CardContent>
-          </Card>
+                <div className="flex flex-wrap gap-2">
+                  <Button asChild variant="outline" className="rounded-lg">
+                    <Link href="/restaurant/staff/reassign">
+                      <ButtonLabel icon={UserCheckIcon}>Assign existing staff</ButtonLabel>
+                    </Link>
+                  </Button>
+                  <Button asChild className="rounded-lg">
+                    <Link href="/restaurant/staff/invite">
+                      <ButtonLabel icon={UserPlusIcon}>Invite staff</ButtonLabel>
+                    </Link>
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="grid gap-3 px-5 pb-5">
+                {snapshot.staff.length === 0 ? (
+                  <p className="rounded-lg border border-dashed border-stone-200 p-4 text-sm text-stone-500">
+                    No staff users yet.
+                  </p>
+                ) : null}
+
+                {snapshot.staff.map((staff) => (
+                  <div
+                    key={staff.membershipId}
+                    className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-stone-200 bg-stone-50 p-4"
+                  >
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-stone-950">{staff.name}</p>
+                        <span className="rounded-md border border-stone-200 bg-white px-2 py-0.5 text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">
+                          {staff.isActive ? "Active" : "Disabled"}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-sm text-stone-500">
+                        {staff.username} - {staff.email}
+                      </p>
+                      <p className="mt-1 text-xs text-stone-400">
+                        {staff.role.replaceAll("_", " ")} - {staff.status}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <DesktopQuickAction
+                        href={`/restaurant/staff/${staff.membershipId}`}
+                        icon={PencilIcon}
+                        label={`Edit access for ${staff.name}`}
+                      />
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            className="rounded-lg border-stone-300 bg-white text-stone-900 hover:bg-stone-100"
+                            aria-label={`Open actions for ${staff.name}`}
+                          >
+                            <MoreHorizontalIcon className="size-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="bg-white text-stone-950">
+                          <DropdownMenuLabel>Staff actions</DropdownMenuLabel>
+                          <DropdownMenuItem asChild>
+                            <Link href={`/restaurant/staff/${staff.membershipId}`}>
+                              Edit access
+                            </Link>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem asChild>
+                            <Link
+                              href={`/users/${staff.membershipId}/reset-password?returnTo=/restaurant`}
+                            >
+                              Create reset link
+                            </Link>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
           ) : null}
         </>
       ) : !isMissingTenantAccess(error) ? (

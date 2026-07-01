@@ -60,11 +60,19 @@ export function canAccessNavigationPath(role: MembershipRole, href: string) {
     return canAccessRole(role, platformAdminRoles);
   }
 
-  if (href === "/company" || href === "/company/users") {
+  if (
+    href === "/company" ||
+    href === "/company/restaurants" ||
+    href === "/company/users"
+  ) {
     return role === "COMPANY_OWNER" || role === "COMPANY_MANAGER";
   }
 
-  if (href === "/restaurant") {
+  if (
+    href === "/restaurant" ||
+    href === "/restaurant/location" ||
+    href === "/restaurant/staff"
+  ) {
     return role === "RESTAURANT_MANAGER";
   }
 

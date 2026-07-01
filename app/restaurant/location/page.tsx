@@ -13,11 +13,12 @@ export default async function RestaurantLocationPage() {
 
   return (
     <SaasAdminShell
-      activePath="/restaurant"
+      activePath="/restaurant/location"
       eyebrow="Location"
       title="Location settings"
       description="Edit the active operating location for this restaurant."
       user={{
+        locationId: session.user.locationId,
         name: session.user.name,
         organizationId: session.user.organizationId,
         role: session.user.role,
