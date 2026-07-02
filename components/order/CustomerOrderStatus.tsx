@@ -72,6 +72,7 @@ export function CustomerOrderStatus({
   refreshKey,
 }: CustomerOrderStatusProps) {
   const [orders, setOrders] = useState<ApiOrder[]>([]);
+  const [currency, setCurrency] = useState("INR");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [pendingCancelId, setPendingCancelId] = useState<string | null>(null);
@@ -134,6 +135,8 @@ export function CustomerOrderStatus({
           setIsLoading(false);
           return;
         }
+
+        setCurrency(payload.currency ?? "INR");
 
         const wasReset = syncCustomerOrdersResetMarker(payload.ordersResetAt ?? null);
 
@@ -291,6 +294,8 @@ export function CustomerOrderStatus({
                       notes={item.notes}
                       quantity={item.quantity}
                       status={item.status}
+                      currency={currency}
+                      unitPrice={item.unitPrice}
                     />
                   ))}
                 </div>

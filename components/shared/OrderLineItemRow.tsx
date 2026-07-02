@@ -2,12 +2,14 @@ import { ReactNode } from "react";
 
 import { OrderStatusBadge } from "@/components/shared/OrderStatusBadge";
 import { OrderItemStatus } from "@/lib/constants";
+import { formatPrice } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 
 type OrderLineItemRowProps = {
   actions?: ReactNode;
   categoryName?: string | null;
   className?: string;
+  currency?: string;
   drinkName: string;
   notes?: string | null;
   quantity: number;
@@ -15,25 +17,30 @@ type OrderLineItemRowProps = {
   unitPrice?: string | null;
 };
 
-function formatLinePrice(unitPrice: string | null | undefined, quantity: number) {
+function formatLinePrice(
+  unitPrice: string | null | undefined,
+  quantity: number,
+  currency?: string,
+) {
   if (!unitPrice) {
     return null;
   }
 
-  return `INR ${(Number(unitPrice) * quantity).toFixed(2)}`;
+  return formatPrice(Number(unitPrice) * quantity, { currency });
 }
 
 export function OrderLineItemRow({
   actions,
   categoryName,
   className,
+  currency,
   drinkName,
   notes,
   quantity,
   status,
   unitPrice,
 }: OrderLineItemRowProps) {
-  const linePrice = formatLinePrice(unitPrice, quantity);
+  const linePrice = formatLinePrice(unitPrice, quantity, currency);
 
   return (
     <div

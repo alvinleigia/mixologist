@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { getTenantMenuCurrency } from "@/lib/menu";
 import { getCustomerOrders, getOrderItemsForOrders, serializeOrder } from "@/lib/orders";
 import { getOrdersResetAt } from "@/lib/order-reset";
 import {
@@ -30,13 +31,17 @@ export async function POST(request: NextRequest) {
     }
 
     const tenantContext = await getPublicTenantContextFromRequest(request);
-    const matchingOrders = await getCustomerOrders(parsed.data.orders, tenantContext);
+    const [matchingOrders, currency] = await Promise.all([
+      getCustomerOrders(parsed.data.orders, tenantContext),
+      getTenantMenuCurrency(tenantContext),
+    ]);
     const itemMap = await getOrderItemsForOrders(
       matchingOrders.map((order) => order.id),
       tenantContext,
     );
     return NextResponse.json({
       orders: matchingOrders.map((order) => serializeOrder(order, itemMap.get(order.id) ?? [])),
+      currency,
       ordersResetAt: await getOrdersResetAt(),
     });
   } catch (error) {

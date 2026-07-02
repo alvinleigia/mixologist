@@ -9,7 +9,7 @@ import {
   serializeOrder,
 } from "@/lib/orders";
 import { getOrdersResetAt } from "@/lib/order-reset";
-import { getMenuSelectionSnapshot } from "@/lib/menu";
+import { getMenuSelectionSnapshot, getTenantMenuCurrency } from "@/lib/menu";
 import { getDb } from "@/db";
 import { orderItems, orders } from "@/db/schema";
 import { requireStaffSession } from "@/lib/auth";
@@ -29,7 +29,10 @@ export async function GET() {
     }
 
     const tenantContext = await getCurrentTenantContext();
-    const { activeOrders, pastOrders } = await getStaffOrders(tenantContext);
+    const [{ activeOrders, pastOrders }, currency] = await Promise.all([
+      getStaffOrders(tenantContext),
+      getTenantMenuCurrency(tenantContext),
+    ]);
     const itemMap = await getOrderItemsForOrders(
       [...activeOrders, ...pastOrders].map((order) => order.id),
       tenantContext,
@@ -38,6 +41,7 @@ export async function GET() {
     return NextResponse.json({
       activeOrders: activeOrders.map((order) => serializeOrder(order, itemMap.get(order.id) ?? [])),
       pastOrders: pastOrders.map((order) => serializeOrder(order, itemMap.get(order.id) ?? [])),
+      currency,
     });
   } catch (error) {
     return NextResponse.json(
@@ -168,6 +172,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       ...serializeOrder(createdOrder, cartItems),
+      currency: await getTenantMenuCurrency(tenantContext),
       ordersResetAt: await getOrdersResetAt(),
     });
   } catch (error) {

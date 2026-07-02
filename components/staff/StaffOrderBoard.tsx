@@ -61,6 +61,7 @@ type StaffOrder = {
 
 type OrdersPayload = {
   activeOrders: StaffOrder[];
+  currency: string;
   pastOrders: StaffOrder[];
 };
 
@@ -77,6 +78,7 @@ function playAnnouncement(customerName: string, drinkName: string) {
 export function StaffOrderBoard() {
   const [orders, setOrders] = useState<OrdersPayload>({
     activeOrders: [],
+    currency: "INR",
     pastOrders: [],
   });
   const [activeTab, setActiveTab] = useState<StaffTab>("active");
@@ -115,6 +117,7 @@ export function StaffOrderBoard() {
 
       setOrders({
         activeOrders: payload.activeOrders ?? [],
+        currency: payload.currency ?? "INR",
         pastOrders: payload.pastOrders ?? [],
       });
       setError(null);
@@ -265,7 +268,7 @@ export function StaffOrderBoard() {
       return;
     }
 
-    setOrders({ activeOrders: [], pastOrders: [] });
+    setOrders((current) => ({ activeOrders: [], currency: current.currency, pastOrders: [] }));
     setError(null);
     setClearConfirmationText("");
     setIsClearDialogOpen(false);
@@ -365,6 +368,7 @@ export function StaffOrderBoard() {
           {visibleOrders.map((order) => (
             <OrderCard
               key={order.orderId}
+              currency={orders.currency}
               order={order}
               onItemAction={runItemAction}
               onItemAnnounce={announceItem}

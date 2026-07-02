@@ -49,6 +49,7 @@ type StaffOrder = {
 type StaffOrderItem = NonNullable<StaffOrder["items"]>[number];
 
 type OrderCardProps = {
+  currency: string;
   order: StaffOrder;
   onItemAction: (
     orderId: string,
@@ -70,6 +71,7 @@ type OrderCardProps = {
 };
 
 export function OrderCard({
+  currency,
   order,
   onItemAction,
   onItemAnnounce,
@@ -322,6 +324,7 @@ export function OrderCard({
                   notes={item.notes}
                   quantity={item.quantity}
                   status={item.status}
+                  currency={currency}
                   unitPrice={item.unitPrice}
                   actions={renderItemActions(item)}
                 />
