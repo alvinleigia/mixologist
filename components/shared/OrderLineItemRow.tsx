@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import { PackageIcon } from "lucide-react";
 
 import { OrderStatusBadge } from "@/components/shared/OrderStatusBadge";
 import { OrderItemStatus } from "@/lib/constants";
@@ -49,17 +50,27 @@ export function OrderLineItemRow({
         className,
       )}
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-stone-900">
-            {drinkName} x{quantity}
-          </p>
-          {categoryName ? (
-            <p className="text-xs text-stone-500">{categoryName}</p>
-          ) : null}
-          {notes ? (
-            <p className="mt-1 text-xs text-stone-500">Note: {notes}</p>
-          ) : null}
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex min-w-0 flex-1 items-start gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-emerald-100 bg-emerald-50 text-emerald-700">
+            <PackageIcon className="size-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-semibold text-stone-900">
+                {drinkName}
+              </p>
+              <span className="rounded-md bg-stone-100 px-2 py-0.5 text-xs font-semibold text-stone-600">
+                x{quantity}
+              </span>
+            </div>
+            {categoryName ? (
+              <p className="mt-1 text-xs text-stone-500">{categoryName}</p>
+            ) : null}
+            {notes ? (
+              <p className="mt-1 text-xs text-stone-500">Note: {notes}</p>
+            ) : null}
+          </div>
         </div>
 
         {status || linePrice ? (
@@ -72,7 +83,11 @@ export function OrderLineItemRow({
         ) : null}
       </div>
 
-      {actions ? <div className="mt-3 flex flex-wrap gap-2">{actions}</div> : null}
+      {actions ? (
+        <div className="mt-3 border-t border-dashed border-stone-200 pt-3">
+          <div className="flex flex-wrap gap-2">{actions}</div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -3,14 +3,17 @@
 import {
   CheckCircleIcon,
   CirclePlayIcon,
+  ClockIcon,
   CookingPotIcon,
   MegaphoneIcon,
+  PackageIcon,
+  UserRoundIcon,
   XIcon,
 } from "lucide-react";
 
-import { OrderStatusBadge } from "@/components/shared/OrderStatusBadge";
 import { ButtonLabel } from "@/components/shared/ButtonLabel";
 import { OrderLineItemRow } from "@/components/shared/OrderLineItemRow";
+import { OrderStatusBadge } from "@/components/shared/OrderStatusBadge";
 import { Spinner } from "@/components/shared/Spinner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -86,6 +89,9 @@ export function OrderCard({
 }: OrderCardProps) {
   const closedAt = order.deliveredAt ?? order.cancelledAt;
   const orderDisplay = formatOrderDisplay(order);
+  const itemCount =
+    order.itemCount ?? order.items?.reduce((sum, item) => sum + item.quantity, 0) ?? 1;
+  const placedTime = new Date(order.createdAt).toLocaleTimeString();
 
   function renderOrderActions() {
     if (order.status === "DELIVERED" || order.status === "CANCELLED") {
@@ -93,9 +99,9 @@ export function OrderCard({
     }
 
     return (
-      <div className="mt-4 rounded-lg border border-stone-200 bg-stone-50 p-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
-          Whole order
+      <div className="mt-5 border-t border-stone-200 pt-4">
+        <p className="text-sm font-semibold text-stone-800">
+          Order actions
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           {order.status === "PENDING" ? (
@@ -112,7 +118,7 @@ export function OrderCard({
                   Starting...
                 </span>
               ) : (
-                <ButtonLabel icon={CookingPotIcon}>Start Order</ButtonLabel>
+                <ButtonLabel icon={CookingPotIcon}>Start whole order</ButtonLabel>
               )}
             </Button>
           ) : null}
@@ -130,7 +136,7 @@ export function OrderCard({
                   Marking Ready...
                 </span>
               ) : (
-                <ButtonLabel icon={CirclePlayIcon}>Mark Order Ready</ButtonLabel>
+                <ButtonLabel icon={CirclePlayIcon}>Mark whole order ready</ButtonLabel>
               )}
             </Button>
           ) : null}
@@ -150,7 +156,7 @@ export function OrderCard({
                     Playing...
                   </span>
                 ) : (
-                  <ButtonLabel icon={MegaphoneIcon}>Play Message</ButtonLabel>
+                  <ButtonLabel icon={MegaphoneIcon}>Play all messages</ButtonLabel>
                 )}
               </Button>
               <Button
@@ -165,7 +171,9 @@ export function OrderCard({
                     Delivering...
                   </span>
                 ) : (
-                  <ButtonLabel icon={CheckCircleIcon}>Mark Order Delivered</ButtonLabel>
+                  <ButtonLabel icon={CheckCircleIcon}>
+                    Mark whole order delivered
+                  </ButtonLabel>
                 )}
               </Button>
             </>
@@ -185,7 +193,7 @@ export function OrderCard({
                   Cancelling...
                 </span>
               ) : (
-                <ButtonLabel icon={XIcon}>Cancel Order</ButtonLabel>
+                <ButtonLabel icon={XIcon}>Cancel whole order</ButtonLabel>
               )}
             </Button>
           ) : null}
@@ -303,29 +311,43 @@ export function OrderCard({
   return (
     <Card className="rounded-xl border-stone-200 bg-white shadow-[0_14px_40px_rgba(40,26,20,0.08)]">
       <CardHeader className="flex flex-row items-start justify-between gap-4 px-5 pt-5 pb-0">
-        <div>
+        <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-[0.25em] text-stone-500">
             {orderDisplay.label}
-            {orderDisplay.meta ? ` · ${orderDisplay.meta}` : ""}
           </p>
-          <h3 className="mt-2 text-2xl font-semibold text-stone-900">
-            {order.customerName}
-          </h3>
-          <p className="mt-1 text-stone-600">
-            {order.drinkName}
-          </p>
-          <p className="mt-1 text-sm text-stone-500">
-            {order.itemCount ?? order.items?.reduce((sum, item) => sum + item.quantity, 0) ?? 1} item(s)
-          </p>
+          {orderDisplay.meta ? (
+            <p className="mt-1 text-xs font-semibold uppercase tracking-[0.2em] text-stone-400">
+              {orderDisplay.meta}
+            </p>
+          ) : null}
+          <div className="mt-3 flex items-start gap-3">
+            <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-700">
+              <UserRoundIcon className="size-5" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-2xl font-semibold text-stone-900">
+                {order.customerName}
+              </h3>
+              <p className="mt-1 text-sm text-stone-600">
+                {order.drinkName}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-md border border-stone-200 bg-white px-2.5 py-1 text-xs font-medium text-stone-700">
+                  <PackageIcon className="size-3.5" />
+                  {itemCount} item(s)
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded-md border border-stone-200 bg-white px-2.5 py-1 text-xs font-medium text-stone-700">
+                  <ClockIcon className="size-3.5" />
+                  Placed {placedTime}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
         <OrderStatusBadge status={order.status} />
       </CardHeader>
 
       <CardContent className="px-5 pt-4 pb-5">
-        <p className="text-sm text-stone-500">
-          Placed {new Date(order.createdAt).toLocaleTimeString()}
-        </p>
-
         {closedAt ? (
           <p className="mt-2 text-sm text-stone-500">
             {order.status === "DELIVERED" ? "Delivered" : "Cancelled"}{" "}
@@ -336,13 +358,13 @@ export function OrderCard({
         {renderOrderActions()}
 
         {order.items?.length ? (
-          <div className="mt-4 grid gap-2">
+          <div className="mt-5 grid gap-3">
             {order.items.map((item) => {
               return (
                 <OrderLineItemRow
                   key={item.id ?? `${order.orderId}-${item.drinkId}`}
                   categoryName={item.categoryName}
-                  className="bg-stone-50"
+                  className="bg-white"
                   drinkName={item.drinkName}
                   notes={item.notes}
                   quantity={item.quantity}
