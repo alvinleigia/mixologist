@@ -13,6 +13,7 @@ import { getMenuSelectionSnapshot, getTenantMenuCurrency } from "@/lib/menu";
 import { getDb } from "@/db";
 import { orderItems, orders } from "@/db/schema";
 import { requireStaffSession } from "@/lib/auth";
+import { canAccessRole, restaurantAdminRoles } from "@/lib/role-access";
 import {
   checkRateLimit,
   getRequestRateLimitKey,
@@ -41,6 +42,7 @@ export async function GET() {
     return NextResponse.json({
       activeOrders: activeOrders.map((order) => serializeOrder(order, itemMap.get(order.id) ?? [])),
       pastOrders: pastOrders.map((order) => serializeOrder(order, itemMap.get(order.id) ?? [])),
+      canCorrectStatuses: canAccessRole(session.user.role, restaurantAdminRoles),
       currency,
     });
   } catch (error) {

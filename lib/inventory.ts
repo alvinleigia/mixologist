@@ -185,3 +185,27 @@ export async function deductInventoryForDeliveredItem(
       ),
     );
 }
+
+export async function restoreInventoryForCorrectedDeliveredItem(
+  db: InventoryWriteClient,
+  context: TenantContext,
+  item: {
+    drinkId: string;
+    quantity: number;
+  },
+) {
+  await db
+    .update(inventoryItems)
+    .set({
+      currentQuantity: sql`${inventoryItems.currentQuantity} + ${item.quantity}`,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(inventoryItems.organizationId, context.organizationId),
+        eq(inventoryItems.locationId, context.locationId),
+        eq(inventoryItems.menuItemId, item.drinkId),
+        eq(inventoryItems.isTracked, true),
+      ),
+    );
+}

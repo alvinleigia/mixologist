@@ -7,6 +7,7 @@ import {
   CookingPotIcon,
   MegaphoneIcon,
   PackageIcon,
+  RotateCcwIcon,
   UserRoundIcon,
   XIcon,
 } from "lucide-react";
@@ -17,7 +18,11 @@ import { OrderStatusBadge } from "@/components/shared/OrderStatusBadge";
 import { Spinner } from "@/components/shared/Spinner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { OrderItemStatus } from "@/lib/constants";
+import { OrderItemStatus, OrderStatus } from "@/lib/constants";
+import {
+  orderCorrectionTargets,
+  orderItemCorrectionTargets,
+} from "@/lib/order-corrections";
 import { formatOrderDisplay } from "@/lib/order-display";
 
 type StaffOrder = {
@@ -73,6 +78,9 @@ type OrderCardProps = {
     orderId: string,
     action: "start" | "ready" | "deliver" | "cancel",
   ) => Promise<void>;
+  onCorrectOrder: (order: StaffOrder) => void;
+  onCorrectItem: (order: StaffOrder, item: StaffOrderItem) => void;
+  canCorrectStatuses: boolean;
   pendingAction: string | null;
   disabled: boolean;
 };
@@ -84,6 +92,9 @@ export function OrderCard({
   onItemAnnounce,
   onOrderAnnounce,
   onOrderAction,
+  onCorrectOrder,
+  onCorrectItem,
+  canCorrectStatuses,
   pendingAction,
   disabled,
 }: OrderCardProps) {
@@ -92,9 +103,14 @@ export function OrderCard({
   const itemCount =
     order.itemCount ?? order.items?.reduce((sum, item) => sum + item.quantity, 0) ?? 1;
   const placedTime = new Date(order.createdAt).toLocaleTimeString();
+  const canCorrectOrder =
+    canCorrectStatuses && orderCorrectionTargets[order.status as OrderStatus].length > 0;
 
   function renderOrderActions() {
-    if (order.status === "DELIVERED" || order.status === "CANCELLED") {
+    if (
+      !canCorrectOrder &&
+      (order.status === "DELIVERED" || order.status === "CANCELLED")
+    ) {
       return null;
     }
 
@@ -197,19 +213,45 @@ export function OrderCard({
               )}
             </Button>
           ) : null}
+
+          {canCorrectOrder ? (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={disabled}
+              onClick={() => onCorrectOrder(order)}
+              className="rounded-lg border-stone-300 bg-white text-stone-900 hover:bg-stone-100"
+            >
+              {pendingAction === `correct-order:${order.orderId}` ? (
+                <span className="inline-flex items-center gap-2">
+                  <Spinner className="text-stone-700" />
+                  Correcting...
+                </span>
+              ) : (
+                <ButtonLabel icon={RotateCcwIcon}>Correct status</ButtonLabel>
+              )}
+            </Button>
+          ) : null}
         </div>
       </div>
     );
   }
 
   function renderItemActions(item: StaffOrderItem) {
-    if (!item.id || item.status === "DELIVERED" || item.status === "CANCELLED") {
+    const canUpdateItem =
+      Boolean(item.id) && item.status !== "DELIVERED" && item.status !== "CANCELLED";
+    const canCorrectItem =
+      canCorrectStatuses &&
+      Boolean(item.id) &&
+      orderItemCorrectionTargets[item.status].length > 0;
+
+    if (!canUpdateItem && !canCorrectItem) {
       return null;
     }
 
     return (
       <>
-        {item.status === "PENDING" || item.status === "PREPARING" ? (
+        {canUpdateItem && (item.status === "PENDING" || item.status === "PREPARING") ? (
           <Button
             type="button"
             variant={item.status === "PREPARING" ? "default" : "outline"}
@@ -245,7 +287,7 @@ export function OrderCard({
           </Button>
         ) : null}
 
-        {item.status === "READY" ? (
+        {canUpdateItem && item.status === "READY" ? (
           <>
             <Button
               type="button"
@@ -288,22 +330,43 @@ export function OrderCard({
           </>
         ) : null}
 
-        <Button
-          type="button"
-          variant="outline"
-          disabled={disabled}
-          onClick={() => onItemAction(order.orderId, item.id!, "cancel")}
-          className="rounded-lg border-rose-200 bg-white text-rose-700 hover:bg-rose-50 hover:text-rose-700"
-        >
-          {pendingAction === `cancel-item:${item.id}` ? (
-            <span className="inline-flex items-center gap-2">
-              <Spinner className="text-rose-700" />
-              Cancelling...
-            </span>
-          ) : (
-            <ButtonLabel icon={XIcon}>Cancel</ButtonLabel>
-          )}
-        </Button>
+        {canUpdateItem ? (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={disabled}
+            onClick={() => onItemAction(order.orderId, item.id!, "cancel")}
+            className="rounded-lg border-rose-200 bg-white text-rose-700 hover:bg-rose-50 hover:text-rose-700"
+          >
+            {pendingAction === `cancel-item:${item.id}` ? (
+              <span className="inline-flex items-center gap-2">
+                <Spinner className="text-rose-700" />
+                Cancelling...
+              </span>
+            ) : (
+              <ButtonLabel icon={XIcon}>Cancel</ButtonLabel>
+            )}
+          </Button>
+        ) : null}
+
+        {canCorrectItem ? (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={disabled}
+            onClick={() => onCorrectItem(order, item)}
+            className="rounded-lg border-stone-300 bg-white text-stone-900 hover:bg-stone-100"
+          >
+            {pendingAction === `correct-item:${item.id}` ? (
+              <span className="inline-flex items-center gap-2">
+                <Spinner className="text-stone-700" />
+                Correcting...
+              </span>
+            ) : (
+              <ButtonLabel icon={RotateCcwIcon}>Correct status</ButtonLabel>
+            )}
+          </Button>
+        ) : null}
       </>
     );
   }

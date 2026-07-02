@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Trash2Icon } from "lucide-react";
+import { RotateCcwIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 
 import { ButtonLabel } from "@/components/shared/ButtonLabel";
@@ -22,13 +22,19 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Card,
   CardContent,
   CardHeader,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { OrderItemStatus } from "@/lib/constants";
+import { OrderItemStatus, OrderStatus } from "@/lib/constants";
+import {
+  orderCorrectionTargets,
+  orderItemCorrectionTargets,
+  statusCorrectionLabels,
+} from "@/lib/order-corrections";
 
 type StaffOrder = {
   orderId: string;
@@ -61,11 +67,25 @@ type StaffOrder = {
 
 type OrdersPayload = {
   activeOrders: StaffOrder[];
+  canCorrectStatuses: boolean;
   currency: string;
   pastOrders: StaffOrder[];
 };
 
 type StaffTab = "active" | "past";
+type StaffOrderItem = NonNullable<StaffOrder["items"]>[number];
+type CorrectionTarget =
+  | {
+      scope: "order";
+      order: StaffOrder;
+      options: OrderStatus[];
+    }
+  | {
+      scope: "item";
+      order: StaffOrder;
+      item: StaffOrderItem;
+      options: OrderItemStatus[];
+    };
 
 function playAnnouncement(customerName: string, drinkName: string) {
   const message = `${customerName}, your ${drinkName} is ready. Please collect it from the bar.`;
@@ -86,6 +106,7 @@ function playOrderAnnouncement(customerName: string) {
 export function StaffOrderBoard() {
   const [orders, setOrders] = useState<OrdersPayload>({
     activeOrders: [],
+    canCorrectStatuses: false,
     currency: "INR",
     pastOrders: [],
   });
@@ -96,6 +117,9 @@ export function StaffOrderBoard() {
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
   const [clearConfirmationText, setClearConfirmationText] = useState("");
+  const [correctionTarget, setCorrectionTarget] = useState<CorrectionTarget | null>(null);
+  const [correctionStatus, setCorrectionStatus] = useState<OrderStatus | OrderItemStatus | "">("");
+  const [correctionReason, setCorrectionReason] = useState("");
   const ordersRequestRef = useRef<AbortController | null>(null);
   const isMountedRef = useRef(false);
 
@@ -125,6 +149,7 @@ export function StaffOrderBoard() {
 
       setOrders({
         activeOrders: payload.activeOrders ?? [],
+        canCorrectStatuses: Boolean(payload.canCorrectStatuses),
         currency: payload.currency ?? "INR",
         pastOrders: payload.pastOrders ?? [],
       });
@@ -197,6 +222,75 @@ export function StaffOrderBoard() {
       cancel: "Item cancelled.",
     }[action];
     toast.success(successMessage);
+    setPendingAction(null);
+  }
+
+  function openOrderCorrection(order: StaffOrder) {
+    const options = orderCorrectionTargets[order.status];
+
+    if (options.length === 0) {
+      return;
+    }
+
+    setCorrectionTarget({ scope: "order", order, options });
+    setCorrectionStatus(options[0]);
+    setCorrectionReason("");
+  }
+
+  function openItemCorrection(order: StaffOrder, item: StaffOrderItem) {
+    const options = orderItemCorrectionTargets[item.status];
+
+    if (options.length === 0) {
+      return;
+    }
+
+    setCorrectionTarget({ scope: "item", order, item, options });
+    setCorrectionStatus(options[0]);
+    setCorrectionReason("");
+  }
+
+  async function correctStatus() {
+    if (!correctionTarget || !correctionStatus) {
+      return;
+    }
+
+    const reason = correctionReason.trim();
+
+    if (reason.length < 3) {
+      toast.error("Please add a correction reason.");
+      return;
+    }
+
+    const actionKey =
+      correctionTarget.scope === "order"
+        ? `correct-order:${correctionTarget.order.orderId}`
+        : `correct-item:${correctionTarget.item.id}`;
+    const endpoint =
+      correctionTarget.scope === "order"
+        ? `/api/orders/${correctionTarget.order.orderId}/correct`
+        : `/api/orders/${correctionTarget.order.orderId}/items/${correctionTarget.item.id}/correct`;
+
+    setPendingAction(actionKey);
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: correctionStatus, reason }),
+    });
+    const payload = await response.json();
+
+    if (!response.ok) {
+      setError(payload.error ?? "Failed to correct status.");
+      toast.error(payload.error ?? "Failed to correct status.");
+      setPendingAction(null);
+      return;
+    }
+
+    await syncOrders();
+    setCorrectionTarget(null);
+    setCorrectionStatus("");
+    setCorrectionReason("");
+    toast.success("Status corrected.");
     setPendingAction(null);
   }
 
@@ -294,7 +388,12 @@ export function StaffOrderBoard() {
       return;
     }
 
-    setOrders((current) => ({ activeOrders: [], currency: current.currency, pastOrders: [] }));
+    setOrders((current) => ({
+      activeOrders: [],
+      canCorrectStatuses: current.canCorrectStatuses,
+      currency: current.currency,
+      pastOrders: [],
+    }));
     setError(null);
     setClearConfirmationText("");
     setIsClearDialogOpen(false);
@@ -400,6 +499,9 @@ export function StaffOrderBoard() {
               onItemAnnounce={announceItem}
               onOrderAction={runOrderAction}
               onOrderAnnounce={announceOrder}
+              onCorrectOrder={openOrderCorrection}
+              onCorrectItem={openItemCorrection}
+              canCorrectStatuses={orders.canCorrectStatuses}
               pendingAction={pendingAction}
               disabled={Boolean(pendingAction)}
             />
@@ -456,6 +558,106 @@ export function StaffOrderBoard() {
                 </span>
               ) : (
                 <ButtonLabel icon={Trash2Icon}>Delete All Orders</ButtonLabel>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={Boolean(correctionTarget)}
+        onOpenChange={(open) => {
+          if (pendingAction?.startsWith("correct-")) {
+            return;
+          }
+
+          if (!open) {
+            setCorrectionTarget(null);
+            setCorrectionStatus("");
+            setCorrectionReason("");
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Correct {correctionTarget?.scope === "item" ? "item" : "order"} status?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This is for fixing an accidental status change. Add a reason so the correction is
+              visible in audit logs.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {correctionTarget ? (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-stone-200 bg-stone-50 px-4 py-3">
+                <p className="text-sm font-semibold text-stone-900">
+                  {correctionTarget.scope === "item"
+                    ? correctionTarget.item.drinkName
+                    : `Order #${correctionTarget.order.orderNo}`}
+                </p>
+                <p className="mt-1 text-sm text-stone-600">
+                  Current status:{" "}
+                  {statusCorrectionLabels[
+                    correctionTarget.scope === "item"
+                      ? correctionTarget.item.status
+                      : correctionTarget.order.status
+                  ]}
+                </p>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-stone-700">Correct to</p>
+                <div className="flex flex-wrap gap-2">
+                  {correctionTarget.options.map((status) => (
+                    <Button
+                      key={status}
+                      type="button"
+                      variant={correctionStatus === status ? "default" : "outline"}
+                      disabled={Boolean(pendingAction)}
+                      onClick={() => setCorrectionStatus(status)}
+                      className={
+                        correctionStatus === status
+                          ? "rounded-lg bg-stone-950 text-white hover:bg-stone-800"
+                          : "rounded-lg border-stone-300 bg-white text-stone-900 hover:bg-stone-100"
+                      }
+                    >
+                      {statusCorrectionLabels[status]}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-stone-700">Correction reason</p>
+                <Textarea
+                  value={correctionReason}
+                  onChange={(event) => setCorrectionReason(event.target.value)}
+                  placeholder="Example: Marked delivered by mistake."
+                  disabled={Boolean(pendingAction)}
+                />
+              </div>
+            </div>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={Boolean(pendingAction)}>
+              Keep Status
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={
+                Boolean(pendingAction) ||
+                !correctionStatus ||
+                correctionReason.trim().length < 3
+              }
+              onClick={(event) => {
+                event.preventDefault();
+                void correctStatus();
+              }}
+            >
+              {pendingAction?.startsWith("correct-") ? (
+                <span className="inline-flex items-center gap-2">
+                  <Spinner className="text-white" />
+                  Correcting...
+                </span>
+              ) : (
+                <ButtonLabel icon={RotateCcwIcon}>Correct Status</ButtonLabel>
               )}
             </AlertDialogAction>
           </AlertDialogFooter>
