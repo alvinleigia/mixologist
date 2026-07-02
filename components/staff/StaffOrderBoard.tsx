@@ -75,6 +75,14 @@ function playAnnouncement(customerName: string, drinkName: string) {
   window.speechSynthesis.speak(utterance);
 }
 
+function playOrderAnnouncement(customerName: string) {
+  const message = `${customerName}, your order is ready. Please collect it from the bar.`;
+  const utterance = new SpeechSynthesisUtterance(message);
+  utterance.rate = 0.9;
+  utterance.pitch = 1;
+  window.speechSynthesis.speak(utterance);
+}
+
 export function StaffOrderBoard() {
   const [orders, setOrders] = useState<OrdersPayload>({
     activeOrders: [],
@@ -250,6 +258,24 @@ export function StaffOrderBoard() {
     setPendingAction(null);
   }
 
+  async function announceOrder(orderId: string, customerName: string) {
+    setPendingAction(`announce-order:${orderId}`);
+    playOrderAnnouncement(customerName);
+
+    const response = await fetch(`/api/orders/${orderId}/announce`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    const payload = await response.json();
+
+    if (!response.ok) {
+      setError(payload.error ?? "Failed to record announcement.");
+      toast.error(payload.error ?? "Failed to record announcement.");
+    }
+
+    setPendingAction(null);
+  }
+
   async function clearAllOrders() {
     setPendingAction("clear-all");
 
@@ -373,6 +399,7 @@ export function StaffOrderBoard() {
               onItemAction={runItemAction}
               onItemAnnounce={announceItem}
               onOrderAction={runOrderAction}
+              onOrderAnnounce={announceOrder}
               pendingAction={pendingAction}
               disabled={Boolean(pendingAction)}
             />

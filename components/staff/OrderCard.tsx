@@ -62,6 +62,10 @@ type OrderCardProps = {
     customerName: string,
     drinkName: string,
   ) => Promise<void>;
+  onOrderAnnounce: (
+    orderId: string,
+    customerName: string,
+  ) => Promise<void>;
   onOrderAction: (
     orderId: string,
     action: "start" | "ready" | "deliver" | "cancel",
@@ -75,6 +79,7 @@ export function OrderCard({
   order,
   onItemAction,
   onItemAnnounce,
+  onOrderAnnounce,
   onOrderAction,
   pendingAction,
   disabled,
@@ -131,21 +136,39 @@ export function OrderCard({
           ) : null}
 
           {order.status === "READY" ? (
-            <Button
-              type="button"
-              disabled={disabled}
-              onClick={() => onOrderAction(order.orderId, "deliver")}
-              className="rounded-lg bg-emerald-600 text-white hover:bg-emerald-500"
-            >
-              {pendingAction === `deliver-order:${order.orderId}` ? (
-                <span className="inline-flex items-center gap-2">
-                  <Spinner className="text-white" />
-                  Delivering...
-                </span>
-              ) : (
-                <ButtonLabel icon={CheckCircleIcon}>Mark Order Delivered</ButtonLabel>
-              )}
-            </Button>
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={disabled}
+                onClick={() => onOrderAnnounce(order.orderId, order.customerName)}
+                className="rounded-lg border-stone-300 bg-white text-stone-900 hover:bg-stone-100"
+              >
+                {pendingAction === `announce-order:${order.orderId}` ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Spinner className="text-stone-700" />
+                    Playing...
+                  </span>
+                ) : (
+                  <ButtonLabel icon={MegaphoneIcon}>Play Message</ButtonLabel>
+                )}
+              </Button>
+              <Button
+                type="button"
+                disabled={disabled}
+                onClick={() => onOrderAction(order.orderId, "deliver")}
+                className="rounded-lg bg-emerald-600 text-white hover:bg-emerald-500"
+              >
+                {pendingAction === `deliver-order:${order.orderId}` ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Spinner className="text-white" />
+                    Delivering...
+                  </span>
+                ) : (
+                  <ButtonLabel icon={CheckCircleIcon}>Mark Order Delivered</ButtonLabel>
+                )}
+              </Button>
+            </>
           ) : null}
 
           {order.status === "PENDING" || order.status === "READY" ? (
