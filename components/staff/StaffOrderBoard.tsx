@@ -189,6 +189,37 @@ export function StaffOrderBoard() {
     setPendingAction(null);
   }
 
+  async function runOrderAction(
+    orderId: string,
+    action: "start" | "ready" | "deliver" | "cancel",
+  ) {
+    setPendingAction(`${action}-order:${orderId}`);
+
+    const response = await fetch(`/api/orders/${orderId}/${action}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: action === "cancel" ? JSON.stringify({}) : undefined,
+    });
+    const payload = await response.json();
+
+    if (!response.ok) {
+      setError(payload.error ?? "Failed to update order.");
+      toast.error(payload.error ?? "Failed to update order.");
+      setPendingAction(null);
+      return;
+    }
+
+    await syncOrders();
+    const successMessage = {
+      start: "Order preparation started.",
+      ready: "Order marked ready.",
+      deliver: "Order marked delivered.",
+      cancel: "Order cancelled.",
+    }[action];
+    toast.success(successMessage);
+    setPendingAction(null);
+  }
+
   async function announceItem(
     orderId: string,
     itemId: string,
@@ -337,6 +368,7 @@ export function StaffOrderBoard() {
               order={order}
               onItemAction={runItemAction}
               onItemAnnounce={announceItem}
+              onOrderAction={runOrderAction}
               pendingAction={pendingAction}
               disabled={Boolean(pendingAction)}
             />

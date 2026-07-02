@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getDb } from "@/db";
-import { orders } from "@/db/schema";
+import { orderItems, orders } from "@/db/schema";
 import { requireStaffSession } from "@/lib/auth";
 import { writeAuditLog } from "@/lib/audit-log";
 import { serializeOrder } from "@/lib/orders";
@@ -44,21 +44,43 @@ export async function POST(
       );
     }
 
-    const [updatedOrder] = await db
-      .update(orders)
-      .set({
-        status: "READY",
-        readyAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(orders.id, id),
-          eq(orders.organizationId, tenantContext.organizationId),
-          eq(orders.locationId, tenantContext.locationId),
-        ),
-      )
-      .returning();
+    const updatedOrder = await db.transaction(async (tx) => {
+      const now = new Date();
+
+      await tx
+        .update(orderItems)
+        .set({
+          status: "READY",
+          readyAt: now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(orderItems.orderId, id),
+            eq(orderItems.status, "PREPARING"),
+            eq(orderItems.organizationId, tenantContext.organizationId),
+            eq(orderItems.locationId, tenantContext.locationId),
+          ),
+        );
+
+      const [nextOrder] = await tx
+        .update(orders)
+        .set({
+          status: "READY",
+          readyAt: order.readyAt ?? now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(orders.id, id),
+            eq(orders.organizationId, tenantContext.organizationId),
+            eq(orders.locationId, tenantContext.locationId),
+          ),
+        )
+        .returning();
+
+      return nextOrder;
+    });
 
     await writeAuditLog({
       actor: session.user,

@@ -61,6 +61,10 @@ type OrderCardProps = {
     customerName: string,
     drinkName: string,
   ) => Promise<void>;
+  onOrderAction: (
+    orderId: string,
+    action: "start" | "ready" | "deliver" | "cancel",
+  ) => Promise<void>;
   pendingAction: string | null;
   disabled: boolean;
 };
@@ -69,11 +73,101 @@ export function OrderCard({
   order,
   onItemAction,
   onItemAnnounce,
+  onOrderAction,
   pendingAction,
   disabled,
 }: OrderCardProps) {
   const closedAt = order.deliveredAt ?? order.cancelledAt;
   const orderDisplay = formatOrderDisplay(order);
+
+  function renderOrderActions() {
+    if (order.status === "DELIVERED" || order.status === "CANCELLED") {
+      return null;
+    }
+
+    return (
+      <div className="mt-4 rounded-lg border border-stone-200 bg-stone-50 p-3">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
+          Whole order
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {order.status === "PENDING" ? (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={disabled}
+              onClick={() => onOrderAction(order.orderId, "start")}
+              className="rounded-lg border-stone-300 bg-white text-stone-900 hover:bg-stone-100"
+            >
+              {pendingAction === `start-order:${order.orderId}` ? (
+                <span className="inline-flex items-center gap-2">
+                  <Spinner className="text-stone-700" />
+                  Starting...
+                </span>
+              ) : (
+                <ButtonLabel icon={CookingPotIcon}>Start Order</ButtonLabel>
+              )}
+            </Button>
+          ) : null}
+
+          {order.status === "PREPARING" ? (
+            <Button
+              type="button"
+              disabled={disabled}
+              onClick={() => onOrderAction(order.orderId, "ready")}
+              className="rounded-lg bg-amber-500 text-stone-950 hover:bg-amber-400"
+            >
+              {pendingAction === `ready-order:${order.orderId}` ? (
+                <span className="inline-flex items-center gap-2">
+                  <Spinner className="text-stone-950" />
+                  Marking Ready...
+                </span>
+              ) : (
+                <ButtonLabel icon={CirclePlayIcon}>Mark Order Ready</ButtonLabel>
+              )}
+            </Button>
+          ) : null}
+
+          {order.status === "READY" ? (
+            <Button
+              type="button"
+              disabled={disabled}
+              onClick={() => onOrderAction(order.orderId, "deliver")}
+              className="rounded-lg bg-emerald-600 text-white hover:bg-emerald-500"
+            >
+              {pendingAction === `deliver-order:${order.orderId}` ? (
+                <span className="inline-flex items-center gap-2">
+                  <Spinner className="text-white" />
+                  Delivering...
+                </span>
+              ) : (
+                <ButtonLabel icon={CheckCircleIcon}>Mark Order Delivered</ButtonLabel>
+              )}
+            </Button>
+          ) : null}
+
+          {order.status === "PENDING" || order.status === "READY" ? (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={disabled}
+              onClick={() => onOrderAction(order.orderId, "cancel")}
+              className="rounded-lg border-rose-200 bg-white text-rose-700 hover:bg-rose-50 hover:text-rose-700"
+            >
+              {pendingAction === `cancel-order:${order.orderId}` ? (
+                <span className="inline-flex items-center gap-2">
+                  <Spinner className="text-rose-700" />
+                  Cancelling...
+                </span>
+              ) : (
+                <ButtonLabel icon={XIcon}>Cancel Order</ButtonLabel>
+              )}
+            </Button>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
 
   function renderItemActions(item: StaffOrderItem) {
     if (!item.id || item.status === "DELIVERED" || item.status === "CANCELLED") {
@@ -213,6 +307,8 @@ export function OrderCard({
             {new Date(closedAt).toLocaleTimeString()}
           </p>
         ) : null}
+
+        {renderOrderActions()}
 
         {order.items?.length ? (
           <div className="mt-4 grid gap-2">

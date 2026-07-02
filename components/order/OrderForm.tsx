@@ -523,7 +523,7 @@ export function OrderForm({ locationQrSlug, locationSlug, onOrderCreated }: Orde
               title="Confirm order"
               meta={
                 <p className="text-sm text-stone-600">
-                  Add the customer name and double-check the cart before sending it to the bar queue.
+                  Add the customer name or table number and double-check the cart before sending it to the bar queue.
                 </p>
               }
               className="mb-0"
@@ -531,7 +531,7 @@ export function OrderForm({ locationQrSlug, locationSlug, onOrderCreated }: Orde
           </CardHeader>
 
           <CardContent className="grid gap-4 px-6 pb-6">
-            <FormField label="Customer name" htmlFor="review-customer-name">
+            <FormField label="Customer name or table number" htmlFor="review-customer-name">
               <Input
                 id="review-customer-name"
                 value={draft.customerName}
@@ -542,7 +542,7 @@ export function OrderForm({ locationQrSlug, locationSlug, onOrderCreated }: Orde
                     setError(null);
                   }
                 }}
-                placeholder="Enter customer name"
+                placeholder="Enter customer name or table number"
                 disabled={isSubmitting}
                 aria-invalid={Boolean(customerNameError)}
                 aria-describedby={customerNameError ? "review-customer-name-error" : undefined}
