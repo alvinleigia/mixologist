@@ -859,7 +859,7 @@ export function MenuManager() {
                   {tags.map((tag) => (
                     <label
                       key={tag.id}
-                      className="flex items-start gap-3 rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-700"
+                      className="flex items-center gap-3 rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm font-medium text-stone-900"
                     >
                       <Checkbox
                         checked={itemDraft.tagIds.includes(tag.id)}
@@ -867,17 +867,7 @@ export function MenuManager() {
                           toggleItemDraftTag(tag.id, checked === true)
                         }
                       />
-                      <span>
-                        <span className="flex items-center gap-2 font-medium text-stone-900">
-                          <TagsIcon className="size-3.5 text-stone-400" />
-                          {tag.name}
-                        </span>
-                        {tag.description ? (
-                          <span className="mt-1 block text-xs leading-5 text-stone-500">
-                            {tag.description}
-                          </span>
-                        ) : null}
-                      </span>
+                      <span>{tag.name}</span>
                     </label>
                   ))}
                 </div>
